@@ -15,9 +15,9 @@ const remaining = computed(() => formatMMSS(remainingMs.value))
 </script>
 
 <template>
-  <div class="absolute inset-0 flex flex-col items-center justify-center bg-amber-100 text-amber-900">
+  <div class="absolute inset-0 flex flex-col items-center justify-center bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-50">
     <div class="text-2xl font-semibold mb-4">Break</div>
     <div class="text-6xl font-mono tabular-nums">{{ remaining }}</div>
-    <div class="mt-4 text-sm text-amber-700">Resumes automatically</div>
+    <div class="mt-4 text-sm text-amber-700 dark:text-amber-300">Resumes automatically</div>
   </div>
 </template>

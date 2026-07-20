@@ -28,9 +28,9 @@ const view = computed(() => store.viewState)
 </script>
 
 <template>
-  <main class="min-h-dvh flex flex-col items-center justify-center bg-neutral-50 text-neutral-900">
+  <main class="min-h-dvh flex flex-col items-center justify-center bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
     <template v-if="store.loadStatus !== 'ready'">
-      <div class="text-neutral-400">Loading…</div>
+      <div class="text-neutral-400 animate-pulse text-xl">Clocked</div>
     </template>
     <template v-else>
       <ClockInView v-if="view.kind === 'clock-in' || view.kind === 'clocked-out'" />
