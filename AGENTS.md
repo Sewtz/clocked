@@ -4,6 +4,18 @@
 
 This repo is a fresh scaffold (no source files yet). The stack below is the agreed plan; when bootstrapping, keep it consistent so future sessions can rely on it.
 
+## Reference docs
+
+Authoritative intent, architecture, and decisions live in `doc/`. Read these before non-trivial work:
+
+- `doc/idea.md` — product intent, users, scope
+- `doc/architecture.md` — components, data model, runtime flow, storage, PWA wiring
+- `doc/decisions.md` — decision log (ADR-style)
+- `doc/test-vnv-strategy.md` — test layers and V&V steps
+- `doc/discussion.md` — live scratchpad while shaping; settled items move to the docs above
+
+When a change affects architecture or decisions, update the relevant `doc/` file in the same change.
+
 ## Product intent
 
 A installable PWA ("Clocked") for logging work start/stop and tracking accumulated worked time.
@@ -40,6 +52,18 @@ pnpm typecheck    # vue-tsc --noEmit
 ```
 
 Required order before committing a change: **lint -> typecheck -> build**.
+
+## Verification & validation (run after every implementation change)
+
+The full V&V procedure lives in `doc/test-vnv-strategy.md`. At minimum, after any code change:
+
+1. `pnpm lint` — no new lint errors
+2. `pnpm typecheck` — `vue-tsc --noEmit` clean
+3. `pnpm build` — production build succeeds, emits `dist/`
+4. `pnpm test` — unit tests pass (once a test runner is wired up)
+5. `pnpm preview` + manual PWA checks: installable, offline-capable, timer survives screen lock, entries persist after reload
+
+If a change touches storage, the data model, or the service worker, also run the storage/SW-specific checks in `doc/test-vnv-strategy.md`. Do not declare a task done until these pass.
 
 ## Testing the PWA locally
 
