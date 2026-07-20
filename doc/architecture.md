@@ -1,27 +1,26 @@
 # Architecture
 
-> Status: draft. Several open questions in `discussion.md` may revise parts of this. Treat anything marked *(pending)* as not yet final.
-
 ## Components
 
 ```
-┌─────────────────────────────────────────────┐
-│  UI (Vue 3, vanilla TS, no SFC-only)         │
-│   - ClockInView    (big red button + adjust) │
-│   - RunningView    (elapsed HH:MM, edit/reset)│
-│   - BreakOverlay   (during mandatory break)  │
-└───────────────┬─────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│  UI (Vue 3, vanilla TS, no SFC-only)          │
+│   - ClockInView    (big red button + adjust)  │
+│   - RunningView    (elapsed HH:MM, edit/reset,│
+│                     clock-out)                 │
+│   - BreakOverlay   (countdown, auto-resume)   │
+└───────────────┬──────────────────────────────┘
                 │  reads / writes
-┌───────────────▼─────────────────────────────┐
-│  Pinia store (single source of truth)        │
-│   - today's entry                             │
-│   - derived: workedMs, breakState, displayMs │
-└───────────────┬─────────────────────────────┘
+┌───────────────▼──────────────────────────────┐
+│  Pinia store (single source of truth)         │
+│   - today's entry (ordered segments)           │
+│   - selectors: workedMs, displayMs, breakState │
+└───────────────┬──────────────────────────────┘
                 │  persists
-┌───────────────▼─────────────────────────────┐
-│  Storage layer (idb wrapper on IndexedDB)    │
-│   - "entries" object store, key by date      │
-└──────────────────────────────────────────────┘
+┌───────────────▼──────────────────────────────┐
+│  Storage layer (idb wrapper on IndexedDB)     │
+│   - "entries" object store, key by date       │
+└───────────────────────────────────────────────┘
 ```
 
 No router, no backend, no network calls at runtime. Single SPA bundle served from root; service worker caches the app shell.
@@ -30,16 +29,26 @@ No router, no backend, no network calls at runtime. Single SPA bundle served fro
 
 ### Entry (one per local calendar day)
 
+A day is modeled as an **ordered list of segments**. Segments alternate between `work` and `break`; the currently-open segment has `end === undefined`.
+
 ```ts
+type Segment =
+  | { type: 'work';  start: number; end?: number }
+  | { type: 'break'; start: number; end?: number; duration: 30 | 15 }; // duration in minutes
+
 interface Entry {
-  date: string;       // 'YYYY-MM-DD', local calendar day of clock-in (key)
-  startEpochMs: number;// wall-clock ms when clock-in happened
-  // adjustment history kept only if we decide to audit; otherwise just update startEpochMs
-  // (pending: see discussion.md "Tamper / audit")
+  date: string;        // 'YYYY-MM-DD', local calendar day (primary key)
+  segments: Segment[]; // ordered; first is always 'work'
 }
 ```
 
-Only **today's** entry is used for the running timer. Previous day's entry is deleted on rollover *(pending: history decision in discussion.md)*.
+Only **today's** entry is stored. Previous day's entry is deleted on rollover. No history is kept.
+
+### Why segments (not a single `startEpochMs`)
+
+- Multiple clock-out / clock-in cycles per day produce multiple work segments.
+- Mandatory breaks are forced pauses within the day, not just subtractions from a total — they are themselves segments so that the break overlay has a clear start/end to count down.
+- Accumulated worked time = sum of `work` segment durations; breaks never contribute to it by construction.
 
 ### Day boundary
 
@@ -49,37 +58,79 @@ Only **today's** entry is used for the running timer. Previous day's entry is de
 ## Runtime flow
 
 ### Clock in
-1. User taps the big red button (or uses a custom time via OS picker).
-2. Store writes an `Entry` with `date` = today, `startEpochMs` = chosen time (default `Date.now()`).
+1. User taps the big red button (or uses a custom time via the OS time picker).
+2. Store appends a new `work` segment with `start = chosen time` (default `Date.now()`).
 3. UI switches to `RunningView`.
 
+### Clock out
+- Close the current open segment (set `end = Date.now()`).
+- UI switches back to `ClockInView` with a "clocked out" state and a clock-in button to resume.
+
 ### Tick
-- A `setInterval` updates the displayed value every second while the document is visible.
-- On `visibilitychange` -> visible: recompute from `startEpochMs` (do **not** rely on the tick having run while hidden — iOS may pause timers).
-- Internally we work in ms; the UI renders `Math.floor(ms / 60000)` minutes -> `HH:MM`.
+- `setInterval` updates the displayed value every second while the document is visible.
+- On `visibilitychange` -> visible: recompute from the segments (do **not** rely on the tick having run while hidden — iOS pauses timers).
+- Internally all math is in ms; UI renders `Math.floor(ms / 60000)` minutes -> `HH:MM`.
 
-### Mandatory breaks
+### Adjustment buttons (+1 / +5 / +10 min)
 
-Worked time is measured from `startEpochMs`. *(pending: whether thresholds are wall-clock or worked-time-based — see discussion.md q5.)*
+- These add to **worked time** by moving the recorded start of the currently-open work segment **earlier** (to the left on the timeline).
+- Implementation: `openWorkSegment.start -= N * 60_000`.
+- No matching "−" buttons in scope.
 
-Conceptual state machine:
+### Custom time picker
+
+- Opens the OS time picker (`<input type="time">` on platforms that surface one).
+- The picked time is converted to an epoch-ms for today's local date and used as the start of the (currently-open or new) work segment.
+
+### Edit clock-in after the fact
+
+- User edits the start of the first work segment (or any work segment, depending on UI scope).
+- After any mutation to segment starts, the store **recomputes break eligibility from scratch** (see state machine below). Breaks may appear, disappear, or shift.
+
+### Mandatory breaks — state machine
+
+Worked time is **accumulated across all work segments** (excluding break segments). Thresholds:
+
+- After **6h** of accumulated worked time → fire 30 min break (once per day).
+- After **9h** of accumulated worked time → fire 15 min break (once per day).
+
+Conceptual state machine (driven by `workedMs`):
 
 ```
-running --6h--> break30 --30min--> running --9h--> break15 --15min--> running
+running --workedMs>=6h--> break30 --30min elapsed--> running --workedMs>=9h--> break15 --15min elapsed--> running
 ```
 
-- When worked time reaches 6h, enter `break30` state for 30 min.
-- When worked time reaches 9h (after the 30 min break resumed), enter `break15` state for 15 min.
-- During a break, the **displayed** elapsed time is frozen at the threshold; the break itself does not count as worked time.
-- After the break duration elapses, automatically resume `running`. *(pending: auto-resume vs. manual tap — see discussion.md q4.)*
+Recompute algorithm (run on every tick, on visibility regain, and after any segment mutation):
 
-Display:
+1. Walk segments in order, accumulating `workedMs` over `work` segments and `breakMs` over `break` segments.
+2. When accumulated worked time crosses 6h and no 30 min break has been recorded yet:
+   - close the current work segment at the crossing instant,
+   - insert a `break` segment `{ duration: 30, start: crossingInstant }`.
+3. When accumulated worked time crosses 9h (after the 30 min break) and no 15 min break has been recorded yet:
+   - close the current work segment at the crossing instant,
+   - insert a `break` segment `{ duration: 15, start: crossingInstant }`.
+4. If a break segment is currently open (no `end`), check whether `now - break.start >= duration`:
+   - if yes: set `end = break.start + duration`, append a new `work` segment `{ start: break.end }`.
+   - if no: state is `break`, with `breakEndsAt = break.start + duration`.
+
+### Display
+
 ```
-displayMs = workedMs - breaksAlreadyTaken
+displayMs = workedMs   // breaks are excluded by construction (they are not 'work' segments)
 ```
-i.e. the user sees worked time **minus** the mandatory break durations.
+
+The UI shows `formatHHMM(displayMs)`.
+
+### Break overlay
+
+While the current segment is an open `break`:
+- Hide the elapsed-time display.
+- Show "Break — NN:NN remaining" counting down from `breakEndsAt - now`.
+- Auto-resume when the countdown reaches 0 (the recomputation in step 4 above closes the break and opens a new work segment).
+- Clock-out is **disabled** during a mandatory break — breaks cannot be skipped.
 
 ### Reset / midnight rollover
+
 - Manual reset: delete today's entry, return to `ClockInView`.
 - Midnight rollover: detected on next tick / visibility; delete entry, return to `ClockInView`. Previous day is not carried over.
 
@@ -93,5 +144,5 @@ i.e. the user sees worked time **minus** the mandatory break durations.
 ## Persistence
 
 - IndexedDB via `idb`, one object store `entries` keyed by `date`.
-- We currently keep only today's entry; the schema allows historical rows if that decision changes.
-- No localStorage for entries (size + eviction risk); localStorage may be used only for ephemeral UI state if needed.
+- Only today's entry is kept; the schema is forward-compatible with history if that decision is ever revisited.
+- No localStorage for entry data (size + eviction risk); localStorage may be used only for ephemeral UI state if needed.

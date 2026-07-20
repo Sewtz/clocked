@@ -34,16 +34,16 @@ ADR-style log. Each entry: context → decision → consequences. Append new dec
 - **Decision:** use `pnpm`; do not commit `package-lock.json` or `yarn.lock`.
 - **Consequences:** all developer commands in `AGENTS.md` use `pnpm`.
 
-## ADR-006 — Display `HH:MM`, internally count seconds/ms
+## ADR-006 — Display `HH:MM`, internally count ms
 
 - **Context:** user wants hours and minutes; tracking seconds precisely is needed for break thresholds.
 - **Decision:** the store computes everything in ms; the UI formats as `HH:MM` (no seconds).
-- **Consequences:** the per-second tick only updates the display; thresholds are derived from `Date.now() - startEpochMs`.
+- **Consequences:** the per-second tick only updates the display; thresholds are derived from segment timestamps.
 
-## ADR-007 — Timer survives screen lock via stored start timestamp
+## ADR-007 — Timer survives screen lock via stored segment timestamps
 
 - **Context:** iOS pauses JS timers in background; a running interval cannot be relied on.
-- **Decision:** do not tick while hidden. On `visibilitychange` -> visible, recompute elapsed from `startEpochMs` and the break state.
+- **Decision:** do not tick while hidden. On `visibilitychange` -> visible, recompute elapsed and break state from the stored segments.
 - **Consequences:** no drift; correct time shown immediately on resume; the per-second tick is purely cosmetic.
 
 ## ADR-008 — No backend, fully offline
@@ -54,23 +54,52 @@ ADR-style log. Each entry: context → decision → consequences. Append new dec
 
 ## ADR-009 — Device clock is not trusted for tamper-evidence
 
-- **Context:** the +min buttons and the OS time picker intentionally let the user backdate the clock-in; device clock is user-editable.
-- **Decision:** record only the wall-clock time the user chose. Do not attempt to detect tampering.
-- **Consequences:** no separate "true" timestamp field; export/import (if added) round-trips the user-chosen value.
+- **Context:** the +min buttons and the OS time picker intentionally let the user backdate the clock-in; device clock is user-editable. The app is a personal helper.
+- **Decision:** record only the wall-clock time the user chose. Do not attempt to detect tampering. No separate "true" timestamp field.
+- **Consequences:** no audit log; export/import (if added) round-trips the user-chosen values.
 
-## ADR-010 — Day = local calendar day; midnight resets
+## ADR-010 — Day = local calendar day; midnight resets; no history
 
-- **Context:** user expects "today" to be their local day; previous day should not bleed in.
-- **Decision:** `date` is `YYYY-MM-DD` in local time. On app becoming visible past midnight, if the stored entry's date is earlier, delete it and show the clock-in view.
-- **Consequences:** no night-shift support (pending — see `discussion.md` q1).
+- **Context:** user expects "today" to be their local day; previous day should not bleed in; no night shifts; history is not needed.
+- **Decision:** `date` is `YYYY-MM-DD` in local time. On app becoming visible past midnight, if the stored entry's date is earlier, delete it and show the clock-in view. Previous days are not stored beyond their lifetime.
+- **Consequences:** no night-shift support; no historical view; storage footprint stays tiny.
 
-## Pending decisions (tracked in `discussion.md`)
+## ADR-011 — Day modeled as ordered work/break segments
 
-- History beyond today vs. delete-at-midnight (q2).
-- Explicit clock-out vs. continuous session until midnight (q3).
-- Break UX: auto-resume vs. manual tap (q4).
-- Break threshold basis: wall-clock vs. worked-time (q5).
-- Adjustment button direction / sign (q6).
-- Multiple sessions per day (q7).
-- Re-editing clock-in after a break has triggered (q8).
-- Audit fields given ADR-009 (q9).
+- **Context:** user can clock out and back in multiple times per day; mandatory breaks are forced pauses within the day; both need clear start/end timestamps for the timer and the break overlay.
+- **Decision:** represent a day as an ordered list of `Segment`s, each either `{ type: 'work', start, end? }` or `{ type: 'break', start, end?, duration: 30 | 15 }`. The currently-open segment has `end === undefined`.
+- **Consequences:** accumulated worked time = sum of `work` segment durations (breaks excluded by construction); breaks have concrete start/end for the countdown UI; multiple sessions are first-class.
+
+## ADR-012 — Mandatory breaks fire on accumulated worked time
+
+- **Context:** the 6h / 9h thresholds could be wall-clock-from-first-start or accumulated worked time. The latter matches labor-rule intent (breaks don't count as work).
+- **Decision:** thresholds use **accumulated worked time** (sum of `work` segment durations, excluding breaks). The 30 min break fires once when worked time first reaches 6h; the 15 min break fires once when worked time first reaches 9h after the 30 min break.
+- **Consequences:** with a 30 min break at 6h, the 15 min break fires at 9h worked = 9h30m wall-clock from start (ignoring other pauses). Recomputation is needed after any segment mutation.
+
+## ADR-013 — Break overlay with auto-resume; clock-out disabled during break
+
+- **Context:** when a mandatory break fires, the user needs to know it is happening and how long remains; breaks are mandatory.
+- **Decision:** while an open `break` segment is the current segment, the UI shows a "Break — NN:NN remaining" countdown. When `now - break.start >= break.duration`, the break auto-closes and a new `work` segment auto-opens. Clock-out is disabled while a break is in progress.
+- **Consequences:** breaks cannot be skipped; the user can still reset the day entirely (which deletes the entry).
+
+## ADR-014 — +min buttons move the open work segment's start earlier
+
+- **Context:** the +1/+5/+10 min buttons exist to correct for the delay between the terminal clock-in and opening the app. The user actually started a bit before the recorded instant, so worked time should grow.
+- **Decision:** `+Nmin` decreases the `start` of the currently-open work segment by `N * 60_000` ms. No matching "−" buttons in scope.
+- **Consequences:** elapsed grows by N minutes; break thresholds may be reached earlier than the original timeline; the recompute step handles this automatically.
+
+## ADR-015 — Editing clock-in recomputes break eligibility
+
+- **Context:** if the user edits the clock-in time after a break has already fired, the prior break may no longer be valid (or a new one may be due).
+- **Decision:** any mutation to segment timestamps triggers a full recompute of the break state from the start of the day. Existing break segments may be removed, moved, or new ones inserted.
+- **Consequences:** the recompute algorithm must be deterministic and idempotent; covered by unit tests.
+
+## ADR-016 — Explicit clock-out; clock-in resumes
+
+- **Context:** users take personal errands mid-day and need the timer to stop and resume.
+- **Decision:** provide a clock-out action that closes the current open work segment. A subsequent clock-in appends a new work segment. Accumulated worked time is the sum across all work segments of the day.
+- **Consequences:** the entry may have many work segments; the recompute algorithm walks them all in order.
+
+## Resolved (no longer pending)
+
+All questions in `discussion.md` have been answered. New decisions will be appended here as they arise during implementation.

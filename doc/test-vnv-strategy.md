@@ -8,36 +8,58 @@ Verification = "did we build it right" (automated). Validation = "did we build t
 
 Target: pure logic, no DOM. Keep this layer fast and deterministic.
 
-- **Break state machine** (`breaks.ts` or similar):
-  - given `startEpochMs` and a "now" value, returns `{ state: 'running' | 'break30' | 'break15', workedMs, displayMs, breakEndsAt? }`.
-  - cases:
-    - before 6h: `running`, display = worked.
-    - exactly 6h: transition to `break30`, display frozen at 6h.
-    - mid-30min-break: still `break30`, display still 6h.
-    - at 6h + 30min: back to `running`, display resumes.
-    - at 9h (worked, i.e. after the 30 min break): transition to `break15`.
-    - past 9h + 15min: `running` again.
-  - *(pending: confirm threshold basis — wall-clock vs worked-time. Whichever is decided, encode it explicitly and test both edges.)*
-- **Day rollover**:
-  - given today's entry and a "now" past local midnight, the selector returns "expired".
-  - given today's entry and a "now" the same day, not expired.
-- **Formatting**:
-  - `formatHHMM(ms)` for boundary values: 0, 59999, 60000, 6h, 6h30m, 9h, 10h.
-- **Adjustment helpers**:
-  - `+1min / +5min / +10min` produce the expected new `startEpochMs` (and direction — pending q6).
+#### Break / segment recomputation (`recomputeBreaks.ts` or similar)
+
+Given a list of segments and a "now" value, returns the canonical segment list (with breaks inserted/removed as needed) plus `{ state: 'running' | 'break30' | 'break15', workedMs, displayMs, breakEndsAt? }`.
+
+Cases:
+- Single work segment, < 6h: no break inserted. `workedMs = now - start`.
+- Single work segment crossing 6h: a `break(30)` segment is inserted at the crossing instant, the work segment is split, the open segment becomes the break.
+- During the 30 min break: state `break30`, `breakEndsAt = break.start + 30 * 60_000`.
+- At break + 30 min: break closes, new `work` segment opens, state `running`.
+- Worked time reaches 9h (after the 30 min break): `break(15)` inserted at the crossing instant.
+- At break + 15 min: state `running` again.
+- Multiple work segments (clock-out + clock-in): worked time accumulates across all of them; breaks fire at the correct accumulated thresholds.
+- Editing the first work segment's start backward (e.g. via +5min) reduces start, increases worked time, may push a break to fire earlier; recompute is idempotent and deterministic.
+- Editing the first work segment's start forward (e.g. via the OS time picker) may remove a previously-fired break if worked time no longer reaches the threshold.
+- Breaks fire exactly once each per day, regardless of how many sessions.
+
+#### Day rollover
+
+- Given an entry with `date` = yesterday and `now` past local midnight, the selector returns "expired".
+- Given an entry with `date` = today, not expired.
+
+#### Formatting
+
+- `formatHHMM(ms)` for boundary values: 0, 59999, 60000, 6h, 6h30m, 9h, 9h15m, 10h.
+
+#### Adjustment helpers
+
+- `+1min / +5min / +10min` decrease `openWorkSegment.start` by `60_000 / 300_000 / 600_000` ms respectively.
+- Adjustment is a no-op (or disabled) while the current segment is a break.
 
 ### 2. Component tests (Vitest + @vue/test-utils, happy-dom)
 
-- `ClockInView`: tapping the red button calls the store action with `Date.now()` (mocked).
-- `ClockInView`: adjustment buttons call the store action with shifted start.
-- `ClockInView`: custom-time field delegates to `<input type="time">` and writes the picked value.
-- `RunningView`: renders `HH:MM` from the store's `displayMs`.
-- `RunningView`: edit and reset actions invoke store mutations.
-- `BreakOverlay` (if present): renders correct remaining break time and switches back to `RunningView` when the break ends.
+- `ClockInView`:
+  - tapping the red button calls the store action with `Date.now()` (mocked).
+  - adjustment buttons call the store action that shifts the open segment start earlier.
+  - custom-time field delegates to `<input type="time">` and writes the picked value.
+  - when the entry already has segments but is currently clocked out, the button shows "clock in (resume)" and appends a new work segment.
+- `RunningView`:
+  - renders `HH:MM` from the store's `displayMs`.
+  - edit and reset actions invoke store mutations.
+  - clock-out closes the open work segment and returns to `ClockInView`.
+- `BreakOverlay`:
+  - renders the correct remaining time, counting down.
+  - when `now` reaches `breakEndsAt`, the overlay closes and `RunningView` resumes.
+  - clock-out button is hidden / disabled while the overlay is shown.
 
 ### 3. Store tests (Pinia, in-memory)
 
-- `clockIn(now)` writes an entry to a fake storage.
+- `clockIn(now)` appends a new work segment to today's entry (or creates the entry if none).
+- `clockOut(now)` closes the current open segment.
+- `adjustStart(deltaMs)` mutates the open work segment's start and triggers recompute.
+- `editClockIn(newStart)` mutates the first work segment's start and triggers recompute.
 - `reset()` deletes today's entry.
 - selectors return correct values for running / break states.
 - midnight rollover path: when the store detects `date != today`, it deletes the entry and resets state.
@@ -45,7 +67,7 @@ Target: pure logic, no DOM. Keep this layer fast and deterministic.
 ### 4. Storage tests (IndexedDB via `fake-indexeddb`)
 
 - `getToday(date)` returns `undefined` when empty.
-- `put(entry)` then `getToday(date)` round-trips.
+- `put(entry)` then `getToday(date)` round-trips, including multi-segment entries.
 - `deleteToday(date)` removes the row.
 - persistence across "reload": re-create the db instance, entry is still there.
 
@@ -67,17 +89,24 @@ Run with `pnpm preview` (serves on `localhost`, so the real SW registers):
 4. **Entries persist after reload**
    - Clock in, hard reload. Today's entry and elapsed time come back from IndexedDB.
 
-5. **Mandatory breaks**
-   - Simulate by editing the clock-in time back far enough to cross 6h / 9h, or by using a dev-only "time travel" helper. Verify:
-     - at 6h, the 30 min break kicks in and the display freezes at 6h,
-     - after 30 min it resumes,
-     - at 9h the 15 min break kicks in,
-     - after 15 min it resumes.
+5. **Multiple sessions per day**
+   - Clock in, work a bit, clock out, clock back in. Accumulated worked time is the sum across both sessions; display jumps correctly.
 
-6. **Midnight rollover**
+6. **Mandatory breaks**
+   - Use the edit-clock-in or a dev-only "time travel" helper to push the start back far enough to cross 6h / 9h. Verify:
+     - at 6h worked, the 30 min break overlay appears with the correct countdown,
+     - after 30 min it auto-resumes and the elapsed display resumes,
+     - at 9h worked (after the 30 min break), the 15 min break overlay appears,
+     - after 15 min it auto-resumes.
+   - Verify the clock-out button is disabled during a break.
+
+7. **+min adjustment buttons**
+   - Tap +1min / +5min / +10min and confirm the elapsed display grows by exactly that amount, and the recorded clock-in time moves earlier by the same amount.
+
+8. **Midnight rollover**
    - Set the device clock to 23:59, clock in, advance device clock past midnight, focus the app. Entry should be gone, clock-in button should be back.
 
-7. **Persistence permission (iOS)**
+9. **Persistence permission (iOS)**
    - First clock-in triggers `navigator.storage.persist()`. Confirm in DevTools / via `navigator.storage.persisted()` that it resolved to `true`.
 
 ## Storage / SW-specific checks (when those areas change)

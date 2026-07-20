@@ -13,6 +13,7 @@ Authoritative intent, architecture, and decisions live in `doc/`. Read these bef
 - `doc/decisions.md` — decision log (ADR-style)
 - `doc/test-vnv-strategy.md` — test layers and V&V steps
 - `doc/discussion.md` — live scratchpad while shaping; settled items move to the docs above
+- `doc/plan/` — step-by-step implementation plan, one file per work package (WP0…WP7). Read `doc/plan/README.md` first.
 
 When a change affects architecture or decisions, update the relevant `doc/` file in the same change.
 
