@@ -106,6 +106,12 @@ ADR-style log. Each entry: context → decision → consequences. Append new dec
 - **Decision:** in `ClockInView`, when `store.viewState.kind === 'clocked-out'`, render `formatHHMM(store.workedMs)` above the red button with the label "Worked today", and surface a "Reset day" button below the custom-time picker (same styling/action as `RunningView`'s reset). The heading stays "Ready to work?".
 - **Consequences:** the worked-time account is visible without re-clocking-in; Reset is reachable from both running and clocked-out views; the display is static when clocked out (no open work segment, so `workedMs` doesn't change between ticks); covered by new component tests.
 
+## ADR-018 — Build and deploy via GitHub Actions to GitHub Pages
+
+- **Context:** the app is a static PWA that Vite builds into a `dist/` folder. It needs to be hosted somewhere HTTPS-enabled for the service worker to register. The source is on GitHub and the project has no backend, so GitHub Pages is a natural zero-cost fit.
+- **Decision:** deploy with a GitHub Actions workflow that builds on every push to `main` and publishes `dist/` to Pages via `actions/deploy-pages`. The Vite `base` is set to `/clocked/` (matching the repo name as a project site) via the `BASE_URL` environment variable in CI. The PWA manifest's `start_url` and `scope` match this base.
+- **Consequences:** deployment is automatic on push; the service worker scope is `/clocked/` so the PWA registers correctly under the sub-path; local `pnpm dev` is unaffected (defaults to `/`); the `BASE_URL` env var must be present during production build for the paths to be correct.
+
 ## Resolved (no longer pending)
 
 All questions in `discussion.md` have been answered. New decisions will be appended here as they arise during implementation.
