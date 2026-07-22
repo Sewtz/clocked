@@ -44,6 +44,10 @@ No open questions currently. New ones get added below as the implementation prog
 
 ---
 
+## Resolved questions (continued)
+
+10. **Clocked-out account display** — when clocked out, the UI shows the accumulated worked time above the red button with label "Worked today", plus a Reset day button. Fresh clock-in state (no entry) does not show either element. *(Resolved — see ADR-017.)*
+
 ## Open questions
 
 - (none)

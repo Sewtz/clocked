@@ -45,6 +45,7 @@ Cases:
   - adjustment buttons call the store action that shifts the open segment start earlier.
   - custom-time field delegates to `<input type="time">` and writes the picked value.
   - when the entry already has segments but is currently clocked out, the button shows "clock in (resume)" and appends a new work segment.
+  - when clocked-out (entry with at least one closed work segment), renders `formatHHMM(workedMs)` above the red button with label "Worked today", and renders a Reset day button that calls `store.reset`; neither is rendered in the fresh clock-in state.
 - `RunningView`:
   - renders `HH:MM` from the store's `displayMs`.
   - edit and reset actions invoke store mutations.
@@ -91,6 +92,9 @@ Run with `pnpm preview` (serves on `localhost`, so the real SW registers):
 
 5. **Multiple sessions per day**
    - Clock in, work a bit, clock out, clock back in. Accumulated worked time is the sum across both sessions; display jumps correctly.
+
+10. **Clocked-out account display**
+    - Clock in, work a bit, clock out. Verify the "Worked today" label and the correct worked time appear above the red Clock In button. Tap Reset day and confirm the entry is wiped and the view returns to the plain clock-in screen.
 
 6. **Mandatory breaks**
    - Use the edit-clock-in or a dev-only "time travel" helper to push the start back far enough to cross 6h / 9h. Verify:

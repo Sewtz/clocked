@@ -100,6 +100,12 @@ ADR-style log. Each entry: context → decision → consequences. Append new dec
 - **Decision:** provide a clock-out action that closes the current open work segment. A subsequent clock-in appends a new work segment. Accumulated worked time is the sum across all work segments of the day.
 - **Consequences:** the entry may have many work segments; the recompute algorithm walks them all in order.
 
+## ADR-017 — Clocked-out view shows the worked-time account + Reset day
+
+- **Context:** when clocked out, the UI collapsed to a plain clock-in button with no "Ready to work?" heading; the user lost visibility of how much they had already worked today and had no way to reset the day without clocking back in.
+- **Decision:** in `ClockInView`, when `store.viewState.kind === 'clocked-out'`, render `formatHHMM(store.workedMs)` above the red button with the label "Worked today", and surface a "Reset day" button below the custom-time picker (same styling/action as `RunningView`'s reset). The heading stays "Ready to work?".
+- **Consequences:** the worked-time account is visible without re-clocking-in; Reset is reachable from both running and clocked-out views; the display is static when clocked out (no open work segment, so `workedMs` doesn't change between ticks); covered by new component tests.
+
 ## Resolved (no longer pending)
 
 All questions in `discussion.md` have been answered. New decisions will be appended here as they arise during implementation.

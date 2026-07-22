@@ -65,6 +65,7 @@ Only **today's** entry is stored. Previous day's entry is deleted on rollover. N
 ### Clock out
 - Close the current open segment (set `end = Date.now()`).
 - UI switches back to `ClockInView` with a "clocked out" state and a clock-in button to resume.
+- The clocked-out view displays the accumulated worked time (label "Worked today") above the red button, plus a Reset day button.
 
 ### Tick
 - `setInterval` updates the displayed value every second while the document is visible.
@@ -119,7 +120,7 @@ Recompute algorithm (run on every tick, on visibility regain, and after any segm
 displayMs = workedMs   // breaks are excluded by construction (they are not 'work' segments)
 ```
 
-The UI shows `formatHHMM(displayMs)`.
+The UI shows `formatHHMM(displayMs)` in `RunningView` (active timer) and also on the clocked-out view (static — no open segment, so the value is frozen).
 
 ### Break overlay
 

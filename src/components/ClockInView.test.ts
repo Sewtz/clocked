@@ -58,4 +58,44 @@ describe('ClockInView', () => {
     await input.trigger('change')
     expect(store.clockIn).not.toHaveBeenCalled()
   })
+
+  it('shows worked time account when clocked out', async () => {
+    const store = useClockStore()
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    store.now = t
+    await store.clockIn(t)
+    store.now = t + 3600_000
+    await store.clockOut()
+    const wrapper = mount(ClockInView)
+    expect(wrapper.text()).toContain('01:00')
+    expect(wrapper.text()).toContain('Worked today')
+  })
+
+  it('does not show worked time account in fresh clock-in state', () => {
+    const wrapper = mount(ClockInView)
+    expect(wrapper.text()).not.toContain('Worked today')
+  })
+
+  it('renders Reset day button when clocked out and calls store.reset', async () => {
+    const store = useClockStore()
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    store.now = t
+    await store.clockIn(t)
+    store.now = t + 3600_000
+    await store.clockOut()
+    store.reset = vi.fn()
+    const wrapper = mount(ClockInView)
+    const buttons = wrapper.findAll('button')
+    const reset = buttons.find(b => b.text() === 'Reset day')
+    expect(reset).toBeDefined()
+    await reset!.trigger('click')
+    expect(store.reset).toHaveBeenCalled()
+  })
+
+  it('does not render Reset day button in fresh clock-in state', () => {
+    const wrapper = mount(ClockInView)
+    const buttons = wrapper.findAll('button')
+    const reset = buttons.find(b => b.text() === 'Reset day')
+    expect(reset).toBeUndefined()
+  })
 })

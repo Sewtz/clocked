@@ -34,4 +34,5 @@ describe('App integration', () => {
     expect(wrapper.text()).toContain('00:00')
     expect(wrapper.text()).toContain('worked')
   })
+
 })

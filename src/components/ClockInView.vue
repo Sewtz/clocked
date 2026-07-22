@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useClockStore } from '@/stores/clock'
+import { formatHHMM } from '@/domain/format'
 import { localEpochForTodayMs } from '@/domain/date'
 
 const store = useClockStore()
 const customTime = ref('')
+
+const showAccount = computed(() => store.isClockedOut)
+const workedToday = computed(() => formatHHMM(store.workedMs))
 
 function clockInNow() {
   store.clockIn()
@@ -26,6 +30,11 @@ function onCustomTime() {
 <template>
   <div class="flex flex-col items-center gap-10 px-6">
     <h1 class="text-2xl font-semibold text-neutral-700 dark:text-neutral-300">Ready to work?</h1>
+
+    <div v-if="showAccount" class="flex flex-col items-center gap-1">
+      <div class="text-5xl font-mono tabular-nums text-neutral-900 dark:text-neutral-100">{{ workedToday }}</div>
+      <div class="text-sm uppercase tracking-wide text-neutral-500">Worked today</div>
+    </div>
 
     <button
       type="button"
@@ -70,5 +79,14 @@ function onCustomTime() {
         @change="onCustomTime"
       />
     </label>
+
+    <button
+      v-if="showAccount"
+      type="button"
+      class="min-h-[44px] px-4 py-2 text-sm text-brand underline dark:text-brand-dark active:scale-95 transition-transform focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      @click="store.reset()"
+    >
+      Reset day
+    </button>
   </div>
 </template>
