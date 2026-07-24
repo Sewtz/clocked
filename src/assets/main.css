@@ -4,16 +4,19 @@
 
 @theme {
   --color-bg: #0a0a0a;
-  --color-surface: #141414;
-  --color-border: #222222;
-  --color-text: #e0e0e0;
+  --color-surface: #0f0f0f;
+  --color-surface-2: #111111;
+  --color-border: #1e1e1e;
+  --color-border-2: #2a2a2a;
+  --color-text: #e8e8e8;
   --color-text-dim: #666666;
-  --color-work: #00ff41;
-  --color-work-dim: #00cc34;
-  --color-break: #ff6a00;
-  --color-overtime: #ff3355;
-  --font-sans: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-text-faint: #444444;
+  --color-work: #b8ff57;
+  --color-work-hi: #c8ff77;
+  --color-break: #ffa94d;
+  --color-overtime: #ff6b6b;
+  --font-sans: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 html, body, #app {
@@ -25,8 +28,8 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
-  background: #0a0a0a;
-  color: #e0e0e0;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 #app {

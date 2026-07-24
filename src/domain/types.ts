@@ -27,6 +27,15 @@ export interface Worktime {
 
 export type BreakState = 'running' | 'break1' | 'break2'
 
+export type DerivedSegmentType = 'work' | 'gap-break' | 'mandatory-break'
+
+export interface DerivedSegment {
+  type: DerivedSegmentType
+  startSec: number
+  endSec: number
+  breakIndex?: 0 | 1
+}
+
 export interface Recomputed {
   workedSeconds: number
   breakSeconds: number
@@ -35,6 +44,7 @@ export interface Recomputed {
   breakEndsAtMs?: number
   targetReached: boolean
   limitReached: boolean
+  segments: DerivedSegment[]
 }
 
 export type ViewState =

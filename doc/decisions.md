@@ -156,6 +156,12 @@ ADR-style log. Each entry: context → decision → consequences. Append new dec
 - **Decision:** expose a `window.__clocked` object installed at app boot. Getters re-evaluate on each access. Mutations write through to real IndexedDB (so test data survives reload). Key methods: `setSettings`, `setPunches`, `punchIn`/`punchOut`, `tickTo`/`tickForward`/`useRealClock`, `simulateMidnight`, `clear`, `resetSettings`, `state` snapshot, `help()`. All methods operate through the real store and storage layer.
 - **Consequences:** developers can test arbitrary in/out patterns and verify break firing without building a dedicated UI. The API ships in production (always on) but is unobtrusive — only accessible via the console. The injectable clock (ADR-024) is consumed here.
 
+## ADR-026 — Redesign UI (dark mono + acid green, mandatory-break banner)
+
+- **Context:** the WP4 UI had a functional but visually unpolished design: red/gray palette, break overlay as a full-screen modal, +Nmin/custom-time/edit-start affordances for in/out punch adjustment. The user commissioned a Figma redesign (v1.0) with a dark mono palette, acid-green accent (`#b8ff57`), JetBrains Mono typeface, mandatory-break banner (inline, not overlay), and a gear-cog settings dialog.
+- **Decision:** strip all WP4 visual scaffolding. New palette: `--color-bg: #0a0a0a`, `--color-surface: #141414`, `--color-work: #b8ff57`, `--color-break: #a0a0a0`, etc. Delete `BreakOverlay.vue`. Rewrite `ClockInView.vue` and `RunningView.vue` with rectangular buttons, status dot, timeline strip, stats grid, daily target bar, milestone hint, mandatory-break countdown banner. Add `SettingsDialog.vue` (modal overlay with two NumberInputs and a Toggle per break). Add `ui/NumberInput.vue` and `ui/Toggle.vue` shared components. All WP4 affordances (+Nmin, custom-time, edit-start, reset-day, "Ready to work") removed. The data model and store are unchanged; the redesign is purely a UI/component layer change.
+- **Consequences:** WP4 and WP6 doc files are superseded and carry a banner. `Segments` getter added to the store (WP9-T3) solely for the timeline and stats display — the data model types are unchanged at the persistence level. The mandatory-break banner counts down in MM:SS format (the only exception to HH:MM display per ADR-006). No new diagrams are needed — the architecture is identical to WP8 except for the component list.
+
 ## Resolved (no longer pending)
 
 All questions in `discussion.md` have been answered. New decisions will be appended here as they arise during implementation.

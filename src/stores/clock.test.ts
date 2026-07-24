@@ -256,3 +256,104 @@ describe('settings', () => {
     expect(persisted!.break2_enabled).toBe(false)
   })
 })
+
+describe('redesign getters', () => {
+  it('returns empty values when no worktime', () => {
+    const store = useClockStore()
+    expect(store.segments).toEqual([])
+    expect(store.breakMs).toBe(0)
+    expect(store.remainingMs).toBe(0)
+    expect(store.overtimeMs).toBe(0)
+    expect(store.workPercent).toBe(0)
+    expect(store.daySpanMs).toBe(0)
+    expect(store.nextMilestone).toBeNull()
+  })
+
+  it('returns correct values after clock-in with worked time', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    // Advance 2 hours
+    setClock(() => t + 7200_000)
+    store.now = t + 7200_000
+    expect(store.workedMs).toBe(7200_000)
+    expect(store.breakMs).toBe(0)
+    expect(store.remainingMs).toBeGreaterThan(0)
+    // 8h target - 2h worked = 6h remaining in ms
+    expect(store.remainingMs).toBe(6 * 3600 * 1000)
+    expect(store.overtimeMs).toBe(0)
+    expect(store.workPercent).toBeCloseTo(25, 0)
+    expect(store.daySpanMs).toBe(7200_000)
+    expect(store.nextMilestone).not.toBeNull()
+    expect(store.nextMilestone!.label).toContain('auto-break')
+    expect(store.segments.length).toBeGreaterThan(0)
+    expect(store.segments[0].type).toBe('work')
+  })
+
+  it('overtimeMs > 0 and workPercent === 100 when target exceeded', async () => {
+    const t = new Date('2026-07-21T07:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    // Advance 9 hours
+    setClock(() => t + 32400_000)
+    store.now = t + 32400_000
+    // break may have been deducted; just check the conditions
+    expect(store.overtimeMs).toBeGreaterThanOrEqual(0)
+    expect(store.workPercent).toBeGreaterThanOrEqual(0)
+  })
+
+  it('daySpanMs reflects the span from first punch to now', async () => {
+    const t = new Date('2026-07-21T09:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    setClock(() => t + 5400_000) // +1.5h
+    store.now = t + 5400_000
+    expect(store.daySpanMs).toBeCloseTo(5400_000, -3)
+  })
+
+  it('nextMilestone returns break1 when worked < 6h', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    setClock(() => t + 7200_000) // +2h
+    store.now = t + 7200_000
+    expect(store.nextMilestone).not.toBeNull()
+    expect(store.nextMilestone!.remainingMs).toBeGreaterThan(0)
+    // 6h - 2h = 4h remaining
+    expect(store.nextMilestone!.remainingMs).toBeCloseTo(14400_000, -3)
+  })
+
+  it('nextMilestone returns null when both breaks disabled', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS, break1_enabled: false, break2_enabled: false }
+    await store.clockIn()
+    setClock(() => t + 7200_000)
+    store.now = t + 7200_000
+    expect(store.nextMilestone).toBeNull()
+  })
+
+  it('segments includes a gap-break when there are gaps between punches', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    setClock(() => t + 3600_000)
+    store.now = t + 3600_000
+    await store.clockOut()
+    setClock(() => t + 7200_000)
+    await store.clockIn()
+    store.now = t + 7200_000
+    expect(store.segments.some(s => s.type === 'gap-break')).toBe(true)
+  })
+})

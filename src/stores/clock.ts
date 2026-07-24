@@ -7,7 +7,7 @@ import { getSettings, putSettings } from '@/storage/settings'
 import { getWorktime, putWorktime, clearWorktime } from '@/storage/worktime'
 import { requestPersistence } from '@/storage/persist'
 import { adjustStart, setFirstPunchIn } from '@/domain/adjust'
-import type { Settings, Worktime, ViewState, BreakState, Recomputed } from '@/domain/types'
+import type { Settings, Worktime, ViewState, BreakState, Recomputed, DerivedSegment } from '@/domain/types'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 
 type LoadStatus = 'idle' | 'loading' | 'ready'
@@ -41,7 +41,7 @@ export const useClockStore = defineStore('clock', {
   getters: {
     computed(): Recomputed {
       if (!this.settings || !this.worktime) {
-        return { workedSeconds: 0, breakSeconds: 0, displaySeconds: 0, breakState: 'running', targetReached: false, limitReached: false, breakEndsAtMs: undefined }
+        return { workedSeconds: 0, breakSeconds: 0, displaySeconds: 0, breakState: 'running', targetReached: false, limitReached: false, breakEndsAtMs: undefined, segments: [] }
       }
       const nowSec = secondsSinceMidnight(this.now)
       return recompute(this.worktime.punches, this.settings, nowSec)
@@ -61,6 +61,45 @@ export const useClockStore = defineStore('clock', {
       if (this.isOnBreak) return { kind: 'break' }
       if (this._isClockedIn) return { kind: 'running' }
       return { kind: 'clocked-out' }
+    },
+
+    segments(): DerivedSegment[] {
+      return this.computed.segments ?? []
+    },
+    breakMs(): number {
+      return this.computed.breakSeconds * 1000
+    },
+    remainingMs(): number {
+      if (!this.settings) return 0
+      return Math.max(0, this.settings.daily_target * 1000 - this.workedMs)
+    },
+    overtimeMs(): number {
+      if (!this.settings) return 0
+      return Math.max(0, this.workedMs - this.settings.daily_target * 1000)
+    },
+    workPercent(): number {
+      if (!this.settings || this.settings.daily_target === 0) return 0
+      return Math.min(100, (this.workedMs / (this.settings.daily_target * 1000)) * 100)
+    },
+    daySpanMs(): number {
+      if (!this.worktime || this.worktime.punches.length === 0) return 0
+      const firstIn = this.worktime.punches[0].in
+      const nowSec = secondsSinceMidnight(this.now)
+      return Math.max(0, (nowSec - firstIn) * 1000)
+    },
+    nextMilestone(): { label: string; remainingMs: number } | null {
+      if (!this.settings) return null
+      const s = this.settings
+      const candidates: Array<{ enabled: boolean; triggerSec: number; label: string }> = [
+        { enabled: s.break1_enabled, triggerSec: s.break1_trigger, label: `${s.break1_trigger / 3600}h auto-break` },
+        { enabled: s.break2_enabled, triggerSec: s.break2_trigger, label: `${s.break2_trigger / 3600}h auto-break` },
+      ]
+      for (const c of candidates) {
+        if (!c.enabled) continue
+        const triggerMs = c.triggerSec * 1000
+        if (this.workedMs < triggerMs) return { label: c.label, remainingMs: triggerMs - this.workedMs }
+      }
+      return null
     },
   },
 

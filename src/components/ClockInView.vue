@@ -1,92 +1,47 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useClockStore } from '@/stores/clock'
 import { formatHHMM } from '@/domain/format'
-import { localEpochForTodayMs } from '@/domain/date'
+import StatsGrid from '@/components/StatsGrid.vue'
+import DailyTargetBar from '@/components/DailyTargetBar.vue'
+import Timeline from '@/components/Timeline.vue'
 
 const store = useClockStore()
-const customTime = ref('')
 
-const showAccount = computed(() => store.isClockedOut)
 const workedToday = computed(() => formatHHMM(store.workedMs))
-
-function clockInNow() {
-  store.clockIn()
-}
-
-function adjust(minutes: 1 | 5 | 10) {
-  store.clockIn(Date.now() - minutes * 60_000)
-}
-
-function onCustomTime() {
-  if (!customTime.value) return
-  const [h, m] = customTime.value.split(':').map(Number)
-  const startMs = localEpochForTodayMs(h, m)
-  store.clockIn(startMs)
-  customTime.value = ''
-}
+const isClockedOut = computed(() => store.isClockedOut)
+const isEmpty = computed(() => !store.worktime)
 </script>
 
 <template>
-  <div class="flex flex-col items-center gap-10 px-6">
-    <h1 class="text-2xl font-semibold text-neutral-700 dark:text-neutral-300">Ready to work?</h1>
-
-    <div v-if="showAccount" class="flex flex-col items-center gap-1">
-      <div class="text-5xl font-mono tabular-nums text-neutral-900 dark:text-neutral-100">{{ workedToday }}</div>
-      <div class="text-sm uppercase tracking-wide text-neutral-500">Worked today</div>
+  <div class="flex flex-col items-center gap-12 w-full max-w-xl">
+    <div v-if="isClockedOut" class="flex flex-col items-center gap-1">
+      <div class="font-mono text-5xl tabular-nums text-text">{{ workedToday }}</div>
+      <div class="font-mono text-xs text-text-faint mt-1 tracking-widest uppercase">Worked today</div>
     </div>
 
     <button
       type="button"
       class="
-        w-56 h-56 rounded-full
-        bg-brand text-white text-3xl font-semibold
-        shadow-xl shadow-brand/30
-        active:scale-95 active:bg-brand-dark
-        transition-all duration-150
-        select-none touch-manipulation
-        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand
+        font-mono text-sm tracking-widest uppercase
+        px-8 py-3 bg-work text-bg font-bold
+        transition-all duration-150 hover:bg-work-hi active:scale-95
+        min-h-[44px]
+        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-work
       "
-      @click="clockInNow"
+      @click="store.clockIn()"
     >
       Clock In
     </button>
 
-    <div class="flex gap-3">
-      <button
-        type="button"
-        class="min-w-[44px] min-h-[44px] px-5 py-2 rounded-lg bg-neutral-200 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100 active:scale-95 transition-transform focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-        @click="adjust(1)"
-      >+1min</button>
-      <button
-        type="button"
-        class="min-w-[44px] min-h-[44px] px-5 py-2 rounded-lg bg-neutral-200 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100 active:scale-95 transition-transform focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-        @click="adjust(5)"
-      >+5min</button>
-      <button
-        type="button"
-        class="min-w-[44px] min-h-[44px] px-5 py-2 rounded-lg bg-neutral-200 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100 active:scale-95 transition-transform focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-        @click="adjust(10)"
-      >+10min</button>
+    <div v-if="isEmpty" class="font-mono text-xs text-text-faint/40 tracking-widest uppercase">
+      Press clock in to start tracking
     </div>
 
-    <label class="flex flex-col items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-      Custom time
-      <input
-        v-model="customTime"
-        type="time"
-        class="px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
-        @change="onCustomTime"
-      />
-    </label>
-
-    <button
-      v-if="showAccount"
-      type="button"
-      class="min-h-[44px] px-4 py-2 text-sm text-brand underline dark:text-brand-dark active:scale-95 transition-transform focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-      @click="store.reset()"
-    >
-      Reset day
-    </button>
+    <template v-if="isClockedOut">
+      <StatsGrid />
+      <DailyTargetBar />
+      <Timeline />
+    </template>
   </div>
 </template>

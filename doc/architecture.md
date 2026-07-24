@@ -5,19 +5,25 @@
 ```
 ┌──────────────────────────────────────────────┐
 │  UI (Vue 3, vanilla TS, no SFC-only)          │
-│   - ClockInView    (big red button + adjust)  │
-│   - RunningView    (elapsed HH:MM, edit/reset,│
-│                     clock-out)                 │
-│   - BreakOverlay   (countdown, auto-resume)   │
+│   - ClockInView    (clock-in button + worked)  │
+│   - RunningView    (elapsed HH:MM, status,     │
+│                     clock-out, mandatory break) │
+│   - SettingsDialog (gear icon, break config)   │
+│   - StatsGrid / DailyTargetBar / Timeline      │
+│   - BreakBanner / MilestoneHint                │
+│   - ui/NumberInput / ui/Toggle                 │
 └───────────────┬──────────────────────────────┘
                 │  reads / writes
 ┌───────────────▼──────────────────────────────┐
 │  Pinia store (single source of truth)         │
 │   - today's worktime (in/out punches)         │
 │   - settings (persistent key-value)           │
-│   - selectors: workedSeconds, breakState, …   │
-│   - recompute: derives breaks from punches    │
-│     + settings, injects mandatory pauses      │
+│   - getters: workedMs, segments, breakMs,     │
+│     remainingMs, overtimeMs, workPercent,     │
+│     daySpanMs, nextMilestone                  │
+│   - recompute: derives segments (work/gap/    │
+│     break) from punches + settings, injects   │
+│     mandatory pauses                          │
 └───────────────┬──────────────────────────────┘
                 │  persists
 ┌───────────────▼──────────────────────────────┐
@@ -85,6 +91,7 @@ interface Worktime {
 - Simpler mental model: the user clocks in and out; each pair is one session.
 - Breaks are **auto-derived** from gaps between punches and configurable threshold settings — they are not stored explicitly.
 - Worked time = Σ(out − in) for each closed punch, minus auto-derived break time.
+- The `Recomputed` type (returned by `recompute()`) includes a `segments: DerivedSegment[]` array for UI rendering (timeline strip, stats grid). Each segment is typed `'work'`, `'gap-break'`, or `'mandatory-break'` and carries a start/end seconds-since-midnight. Segments are not stored — they are derived on every read.
 
 ## Break derivation algorithm
 
@@ -112,50 +119,32 @@ Breaks fire exactly once each per day. After break2 is satisfied, no more breaks
 ## Runtime flow
 
 ### Clock in
-1. User taps the big red button (or uses a custom time via the OS time picker).
-2. Store appends a new punch `{ in: secondsSinceMidnight(chosenTime) }`.
+1. User taps the rectangular acid-green Clock In button on `ClockInView`.
+2. Store appends a new punch `{ in: nowSeconds }` (wall clock).
 3. UI switches to `RunningView`.
 
 ### Clock out
-- Set the last punch's `out = secondsSinceMidnight(now())`.
-- UI switches back to `ClockInView` with a "clocked out" state and a clock-in button to resume.
-- The clocked-out view displays the accumulated worked time (label "Worked today") above the red button, plus a Reset day button.
+- Set the last punch's `out = nowSeconds` (open punch closed).
+- UI switches back to `ClockInView` with a "clocked out" label and a Clock In button to resume.
+- The clocked-out view displays accumulated worked time ("Worked today"), stats, daily-target bar, and timeline. No Reset-day button — use `window.__clocked.clear()` in the console for development.
 
 ### Tick
-- `setInterval` updates the displayed value every second while the document is visible.
-- All time values are read from the **injectable clock** (`src/domain/clock.ts`, default `Date.now()`) to support the debug API's `tickTo`/`tickForward`.
+- `setInterval` updates the displayed value every 1 s while the document is visible.
+- All time values read from the **injectable clock** (`src/domain/clock.ts`, default `Date.now()`) to support the debug API's `tickTo`/`tickForward`.
 - On `visibilitychange` -> visible: recompute from punches (do **not** rely on the tick having run while hidden — iOS pauses timers).
-- Internally all math is in seconds; UI displays `Math.floor(displaySeconds / 3600)` hours and `Math.floor((displaySeconds % 3600) / 60)` minutes -> `HH:MM`.
+- All displays are HH:MM (ADR-006); the sole exception is the mandatory-break countdown banner which shows MM:SS.
 
-### Adjustment buttons (+1 / +5 / +10 min)
-
-- These add to worked time by moving the **start of the earliest punch** earlier (decrease `punches[0].in`).
-- Implementation: `punches[0].in -= N * 60`.
-- After adjustment, the recompute pipeline re-derives break state from scratch.
-
-### Custom time picker
-
-- Opens the OS time picker (`<input type="time">`).
-- The picked time is converted to seconds-since-midnight and used as the start of a new punch.
-
-### Edit clock-in after the fact
-
-- User edits the `in` time of the first punch.
-- After any mutation, the store **recomputes break eligibility from scratch** (see algorithm above). Breaks may appear, disappear, or shift.
-
-### Mandatory breaks — overlay
+### Mandatory breaks — inline banner
 
 When the recompute algorithm introduces a mandatory pause:
-- `breakState` becomes `'break1'` or `'break2'`.
-- `breakEndsAt` is an epoch-ms timestamp (wall clock when the pause ends).
-- The UI shows "Break — NN:NN remaining" counting down from `breakEndsAt - now`.
-- Auto-resume when `now >= breakEndsAt` (the recompute returns `breakState = 'running'`).
-- Clock-out is **disabled** during a mandatory break — breaks cannot be skipped.
+- `viewState.kind` becomes `'break'` (break1 or break2).
+- The break timer is derived from `breakEndsAt - now()` (epoch-ms diff).
+- The inline `BreakBanner` counts down MM:SS; when it reaches zero the state reverts to `running`.
+- Clock-out is **disabled** during a mandatory break — breaks cannot be skipped. The `RunningView` hides the Clock Out button when `viewState.kind === 'break'`.
 
-### Reset / midnight rollover
+### Midnight rollover
 
-- Manual reset: delete the worktime record, clear in-memory state, return to `ClockInView`.
-- Midnight rollover: detected on next tick / visibility; clear worktime, return to `ClockInView`. Previous day is not carried over.
+- Detected on next tick / visibility change: if the worktime record `date` differs from the current local date, clear worktime and return to `ClockInView`. Previous day is not carried over.
 
 ## PWA wiring
 

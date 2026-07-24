@@ -90,7 +90,14 @@ Dev:
     components/    # Vue SFCs
       ClockInView.vue
       RunningView.vue
-      BreakOverlay.vue
+      SettingsDialog.vue
+      StatsGrid.vue
+      DailyTargetBar.vue
+      Timeline.vue
+      BreakBanner.vue
+      MilestoneHint.vue
+      ui/NumberInput.vue
+      ui/Toggle.vue
     App.vue
     main.ts
   ```

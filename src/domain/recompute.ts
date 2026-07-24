@@ -1,4 +1,4 @@
-import type { Recomputed, Settings, Worktime, BreakState } from './types'
+import type { Recomputed, Settings, Worktime, BreakState, DerivedSegment } from './types'
 
 export function recompute(
   punches: Worktime['punches'],
@@ -10,6 +10,7 @@ export function recompute(
       workedSeconds: 0, breakSeconds: 0, displaySeconds: 0,
       breakState: 'running',
       targetReached: false, limitReached: false,
+      segments: [],
     }
   }
 
@@ -44,6 +45,25 @@ export function recompute(
   let break1Done = false
   let break2Done = false
 
+  const segments: DerivedSegment[] = []
+
+  for (const p of punches) {
+    const end = p.out ?? nowSec
+    segments.push({ type: 'work', startSec: p.in, endSec: end })
+  }
+
+  for (let i = 0; i < punches.length - 1; i++) {
+    const out = punches[i].out
+    if (out !== undefined) {
+      const gap = punches[i + 1].in - out
+      if (gap > 0) {
+        segments.push({ type: 'gap-break', startSec: out, endSec: punches[i + 1].in })
+      }
+    }
+  }
+
+  segments.sort((a, b) => a.startSec - b.startSec)
+
   if (totalGaps < totalRequired) {
     mandatoryPauseSeconds = totalRequired - totalGaps
 
@@ -64,10 +84,12 @@ export function recompute(
 
           const mandatory1 = Math.min(mandatoryPauseSeconds, break1Dur)
           if (mandatory1 > 0) {
-            const triggerInstantMs = epochMsForSeconds(p.in + consumed)
+            const triggerSec = p.in + consumed
+            const triggerInstantMs = epochMsForSeconds(triggerSec)
             breakEndsAtMs = triggerInstantMs + mandatory1 * 1000
             breakState = 'break1'
             mandatoryPauseSeconds -= mandatory1
+            insertMandatoryBreak(segments, triggerSec, mandatory1, 0)
           }
 
           if (breakEndsAtMs === undefined) {
@@ -75,9 +97,11 @@ export function recompute(
             const remaining = dur - consumed
             const pause1 = Math.min(mandatoryPauseSeconds, break1Dur - mandatory1)
             if (pause1 > 0) {
-              breakEndsAtMs = epochMsForSeconds(p.in + consumed) + pause1 * 1000
+              const triggerSec = p.in + consumed
+              breakEndsAtMs = epochMsForSeconds(triggerSec) + pause1 * 1000
               breakState = 'break1'
               mandatoryPauseSeconds -= pause1
+              insertMandatoryBreak(segments, triggerSec, pause1, 0)
             } else {
               workedElapsed += remaining
               consumed = dur
@@ -97,10 +121,12 @@ export function recompute(
 
           const mandatory2 = Math.min(mandatoryPauseSeconds, break2Dur)
           if (mandatory2 > 0) {
-            const triggerInstantMs = epochMsForSeconds(p.in + consumed)
+            const triggerSec = p.in + consumed
+            const triggerInstantMs = epochMsForSeconds(triggerSec)
             breakEndsAtMs = triggerInstantMs + mandatory2 * 1000
             breakState = 'break2'
             mandatoryPauseSeconds -= mandatory2
+            insertMandatoryBreak(segments, triggerSec, mandatory2, 1)
           }
 
           if (breakEndsAtMs === undefined) {
@@ -108,9 +134,11 @@ export function recompute(
             const remaining = dur - consumed
             const pause2 = Math.min(mandatoryPauseSeconds, break2Dur - mandatory2)
             if (pause2 > 0) {
-              breakEndsAtMs = epochMsForSeconds(p.in + consumed) + pause2 * 1000
+              const triggerSec = p.in + consumed
+              breakEndsAtMs = epochMsForSeconds(triggerSec) + pause2 * 1000
               breakState = 'break2'
               mandatoryPauseSeconds -= pause2
+              insertMandatoryBreak(segments, triggerSec, pause2, 1)
             } else {
               workedElapsed += remaining
             }
@@ -135,6 +163,7 @@ export function recompute(
     breakEndsAtMs,
     targetReached: workedSeconds >= settings.daily_target,
     limitReached: workedSeconds >= settings.daily_limit,
+    segments,
   }
 }
 
@@ -142,4 +171,55 @@ function epochMsForSeconds(secondsSinceMidnight: number): number {
   const base = new Date()
   base.setHours(0, 0, 0, 0)
   return base.getTime() + secondsSinceMidnight * 1000
+}
+
+function insertMandatoryBreak(segments: DerivedSegment[], triggerSec: number, durationSec: number, breakIndex: 0 | 1): void {
+  const mb: DerivedSegment = { type: 'mandatory-break', startSec: triggerSec, endSec: triggerSec + durationSec, breakIndex }
+
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i]
+
+    if (s.startSec <= triggerSec && s.endSec > triggerSec) {
+      if (s.type === 'work') {
+        const endAfter = s.endSec
+        segments.splice(i, 1,
+          { type: 'work', startSec: s.startSec, endSec: triggerSec },
+          mb,
+        )
+        if (triggerSec + durationSec < endAfter) {
+          segments.splice(i + 2, 0, { type: 'work', startSec: triggerSec + durationSec, endSec: endAfter })
+        }
+        return
+      }
+      if (s.type === 'gap-break') {
+        const endAfter = s.endSec
+        if (triggerSec + durationSec < endAfter) {
+          segments.splice(i, 1, mb, { type: 'gap-break', startSec: triggerSec + durationSec, endSec: endAfter })
+        } else {
+          segments.splice(i, 1, mb)
+        }
+        return
+      }
+      return
+    }
+
+    if (s.startSec === triggerSec) {
+      if (s.type === 'work') {
+        segments.splice(i, 1,
+          mb,
+          { type: 'work', startSec: triggerSec + durationSec, endSec: s.endSec },
+        )
+        return
+      }
+      if (s.type === 'gap-break') {
+        if (triggerSec + durationSec < s.endSec) {
+          segments.splice(i, 1, mb, { type: 'gap-break', startSec: triggerSec + durationSec, endSec: s.endSec })
+        } else {
+          segments.splice(i, 1, mb)
+        }
+        return
+      }
+      return
+    }
+  }
 }
