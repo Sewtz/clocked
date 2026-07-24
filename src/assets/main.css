@@ -1,12 +1,19 @@
 @import "tailwindcss";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/700.css";
 
 @theme {
-  --color-brand: #dc2626;
-  --color-brand-dark: #b91c1c;
-  --color-bg: #fafafa;
-  --color-surface: #ffffff;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --color-bg: #0a0a0a;
+  --color-surface: #141414;
+  --color-border: #222222;
+  --color-text: #e0e0e0;
+  --color-text-dim: #666666;
+  --color-work: #00ff41;
+  --color-work-dim: #00cc34;
+  --color-break: #ff6a00;
+  --color-overtime: #ff3355;
+  --font-sans: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
 html, body, #app {
@@ -18,6 +25,8 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+  background: #0a0a0a;
+  color: #e0e0e0;
 }
 
 #app {

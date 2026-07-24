@@ -1,5 +1,7 @@
 # WP6 — Styling & polish
 
+> **Superseded for the visual layer by WP9 (`09-redesign-ui.md`).** The dark-mode/light-mode and `prefers-color-scheme` guidance below is replaced by WP9's dark-only palette. WP9 keeps the touch-target (44×44px), safe-area, and `tabular-nums` guidance where not overridden.
+
 Goal: take the working-but-ugly app from WP4 and give it a consistent mobile-first look using Tailwind v4 utilities. Big round red button that's easy to tap. Safe-area handling for iOS notch. Theme color. No new dependencies.
 
 **Strict order:** T1 → T2 → ... → T5.

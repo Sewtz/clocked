@@ -24,10 +24,13 @@ Step-by-step plan for implementing the Clocked PWA. Designed to be executed by a
 | `06-styling.md` | WP6 — Styling & polish | 5 |
 | `07-vnv.md` | WP7 — Manual V&V | 9 |
 | `08-restructure-storage.md` | WP8 — Storage restructure (settings + worktime) | 12 |
+| `09-redesign-ui.md` | WP9 — UI redesign (Figma v1.0) | 10 |
 
-**Total: ~65 tasks.**
+**Total: ~75 tasks.**
 
 **Note on WP8:** This work package supersedes parts of WP1, WP2, and WP3. After WP8 is complete, the old `entries` store, `Entry`/`Segment` types, and `recomputeBreaks` function are removed. Do not work WP1/WP2/WP3 tasks before WP8 — they describe the old model.
+
+**Note on WP9:** This work package supersedes WP4 and WP6 for the visual layer. Work WP9 only after WP8 — it depends on the new store getters and the `Recomputed.segments` field added in WP9-T2/T3, which build on the WP8 punch/settings model. WP4's data-flow, lifecycle, and accessibility guidance still apply where WP9 does not override them. The WP4 `BreakOverlay` component is deleted by WP9-T9; mandatory breaks are rendered inline by `RunningView`.
 
 ## Library versions (majors pinned)
 
