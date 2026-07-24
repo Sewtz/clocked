@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
-import { clearAllEntries } from '@/storage/entries'
+import { clearWorktime } from '@/storage/worktime'
+import { setClock } from '@/domain/clock'
 import App from './App.vue'
 
 beforeEach(async () => {
   setActivePinia(createPinia())
-  await clearAllEntries()
+  await clearWorktime()
   vi.useFakeTimers()
+  setClock(() => Date.now())
 })
 
 afterEach(() => {
@@ -34,5 +36,4 @@ describe('App integration', () => {
     expect(wrapper.text()).toContain('00:00')
     expect(wrapper.text()).toContain('worked')
   })
-
 })

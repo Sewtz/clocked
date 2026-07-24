@@ -10,9 +10,11 @@ const display = computed(() => formatHHMM(store.displayMs))
 
 const editTime = ref('')
 function prefillEdit() {
-  const first = store.entry?.segments[0]
-  if (first && first.type === 'work') {
-    const d = new Date(first.start)
+  const first = store.worktime?.punches[0]
+  if (first) {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    d.setSeconds(first.in)
     editTime.value = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   }
 }
@@ -23,7 +25,7 @@ function applyEdit() {
 }
 
 function adjust(minutes: 1 | 5 | 10) {
-  store.adjustStart(minutes)
+  store.adjustStart(minutes * 60)
 }
 </script>
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { todayString, isExpired, localEpochForTodayMs } from './date'
+import { todayString, isExpired, localEpochForTodayMs, secondsSinceMidnight } from './date'
 
 describe('todayString', () => {
   it('returns YYYY-MM-DD for a given date', () => {
@@ -45,10 +45,27 @@ describe('localEpochForTodayMs', () => {
     const ms = localEpochForTodayMs(9, 30, now)
     const d = new Date(ms)
     expect(d.getFullYear()).toBe(2026)
-    expect(d.getMonth()).toBe(6) // 0-based, July = 6
+    expect(d.getMonth()).toBe(6)
     expect(d.getDate()).toBe(21)
     expect(d.getHours()).toBe(9)
     expect(d.getMinutes()).toBe(30)
     expect(d.getSeconds()).toBe(0)
+  })
+})
+
+describe('secondsSinceMidnight', () => {
+  it('returns 0 at midnight', () => {
+    const d = new Date('2026-07-21T00:00:00')
+    expect(secondsSinceMidnight(d.getTime())).toBe(0)
+  })
+
+  it('returns 34200 at 09:30', () => {
+    const d = new Date('2026-07-21T09:30:00')
+    expect(secondsSinceMidnight(d.getTime())).toBe(34200)
+  })
+
+  it('returns 86399 at 23:59:59', () => {
+    const d = new Date('2026-07-21T23:59:59')
+    expect(secondsSinceMidnight(d.getTime())).toBe(86399)
   })
 })

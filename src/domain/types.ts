@@ -1,33 +1,40 @@
-export type BreakDuration = 30 | 15
-
-export interface WorkSegment {
-  type: 'work'
-  start: number
-  end?: number
+export interface Settings {
+  daily_target: number
+  daily_limit: number
+  break1_enabled: boolean
+  break1_trigger: number
+  break1_duration: number
+  break2_enabled: boolean
+  break2_trigger: number
+  break2_duration: number
 }
 
-export interface BreakSegment {
-  type: 'break'
-  start: number
-  end?: number
-  duration: BreakDuration
+export const DEFAULT_SETTINGS: Settings = {
+  daily_target: 28800,
+  daily_limit: 36000,
+  break1_enabled: true,
+  break1_trigger: 21600,
+  break1_duration: 1800,
+  break2_enabled: true,
+  break2_trigger: 32400,
+  break2_duration: 900,
 }
 
-export type Segment = WorkSegment | BreakSegment
-
-export interface Entry {
+export interface Worktime {
   date: string
-  segments: Segment[]
+  punches: Array<{ in: number; out?: number }>
 }
 
-export type BreakState = 'running' | 'break30' | 'break15'
+export type BreakState = 'running' | 'break1' | 'break2'
 
-export interface ClockState {
-  state: BreakState
-  workedMs: number
-  displayMs: number
-  breakEndsAt?: number
-  currentSegment: Segment
+export interface Recomputed {
+  workedSeconds: number
+  breakSeconds: number
+  displaySeconds: number
+  breakState: BreakState
+  breakEndsAtMs?: number
+  targetReached: boolean
+  limitReached: boolean
 }
 
 export type ViewState =

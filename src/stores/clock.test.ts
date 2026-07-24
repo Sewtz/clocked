@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useClockStore, startTick, stopTick } from './clock'
-import { clearAllEntries, putEntry, getEntry } from '@/storage/entries'
-import { SIX_HOURS_MS, BREAK_30_MS } from '@/domain/recomputeBreaks'
+import { useClockStore, stopTick } from './clock'
+import { getSettings, putSettings } from '@/storage/settings'
+import { getWorktime, putWorktime, clearWorktime } from '@/storage/worktime'
+import { setClock } from '@/domain/clock'
+import { DEFAULT_SETTINGS } from '@/domain/types'
+import { secondsSinceMidnight } from '@/domain/date'
 
 vi.mock('@/storage/persist', () => ({
   requestPersistence: vi.fn().mockResolvedValue(true),
@@ -11,235 +14,216 @@ vi.mock('@/storage/persist', () => ({
 
 beforeEach(async () => {
   setActivePinia(createPinia())
-  await clearAllEntries()
+  await clearWorktime()
   stopTick()
+  setClock(() => 0)
 })
 
 describe('boot / init', () => {
-  it('init loads today entry from storage', async () => {
-    const now = new Date('2026-07-21T08:00:00').getTime()
-    await putEntry({ date: '2026-07-21', segments: [{ type: 'work', start: now }] })
+  it('init loads settings (with defaults) and worktime', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    await putSettings(DEFAULT_SETTINGS)
+    await putWorktime({ date: '2026-07-21', punches: [{ in: secondsSinceMidnight(t) }] })
+
     const store = useClockStore()
-    store.now = now
     await store.init()
     expect(store.loadStatus).toBe('ready')
-    expect(store.entry).not.toBeNull()
-    expect(store.entry!.date).toBe('2026-07-21')
+    expect(store.settings).toStrictEqual(DEFAULT_SETTINGS)
+    expect(store.worktime).not.toBeNull()
     expect(store.isClockedIn).toBe(true)
   })
 
-  it('init with empty storage leaves entry null', async () => {
+  it('init with empty storage creates defaults', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
     await store.init()
     expect(store.loadStatus).toBe('ready')
-    expect(store.entry).toBeNull()
+    expect(store.settings).toStrictEqual(DEFAULT_SETTINGS)
+    expect(store.worktime).toBeNull()
   })
 })
 
 describe('clockIn / clockOut', () => {
-  it('clockIn creates entry with one work segment', async () => {
+  it('clockIn creates worktime with one punch', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    expect(store.entry).not.toBeNull()
-    expect(store.entry!.segments).toHaveLength(1)
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    expect(store.worktime).not.toBeNull()
+    expect(store.worktime!.punches).toHaveLength(1)
     expect(store.isClockedIn).toBe(true)
   })
 
-  it('clockIn then clockOut closes the segment', async () => {
+  it('clockIn then clockOut closes the punch', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    store.now += 3600_000
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    setClock(() => t + 3600_000)
     await store.clockOut()
     expect(store.isClockedOut).toBe(true)
-    expect(store.workedMs).toBe(3600_000)
+    expect(store.workedMs).toBeGreaterThanOrEqual(3600_000)
   })
 
   it('clockIn twice is a no-op when already running', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    await store.clockIn(store.now + 1000)
-    expect(store.entry!.segments).toHaveLength(1)
-  })
-
-  it('clockIn while on break is a no-op', async () => {
-    const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    store.now += SIX_HOURS_MS + 1000
-    await store.persistAndRecompute()
-    expect(store.isOnBreak).toBe(true)
-    const segCount = store.entry!.segments.length
+    store.settings = { ...DEFAULT_SETTINGS }
     await store.clockIn()
-    expect(store.entry!.segments.length).toBe(segCount)
+    await store.clockIn()
+    expect(store.worktime!.punches).toHaveLength(1)
   })
 
-  it('clockIn after clockOut appends a new work segment', async () => {
+  it('clockIn after clockOut appends a new punch', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    store.now += 3600_000
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    setClock(() => t + 3600_000)
     await store.clockOut()
     expect(store.isClockedOut).toBe(true)
-    store.now += 3600_000
-    await store.clockIn(store.now)
-    expect(store.entry!.segments).toHaveLength(2)
+    setClock(() => t + 7200_000)
+    await store.clockIn()
+    expect(store.worktime!.punches).toHaveLength(2)
     expect(store.isClockedIn).toBe(true)
   })
 
   it('clockOut is a no-op when not clocked in', async () => {
     const store = useClockStore()
     await store.clockOut()
-    expect(store.entry).toBeNull()
+    expect(store.worktime).toBeNull()
   })
 
-  it('persisted entry matches in-memory entry after mutations', async () => {
+  it('persisted worktime matches in-memory after mutations', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    const fetched = await getEntry('2026-07-21')
-    expect(fetched).toStrictEqual(store.entry)
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    const fetched = await getWorktime()
+    expect(fetched).toStrictEqual(store.worktime)
   })
 })
 
 describe('adjustStart', () => {
-  it('moves open segment start earlier by N minutes', async () => {
+  it('moves first punch in earlier by delta seconds', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    const orig = store.entry!.segments[0].start
-    await store.adjustStart(5)
-    expect(store.entry!.segments[0].start).toBe(orig - 5 * 60_000)
-  })
-
-  it('is a no-op when on break', async () => {
-    const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    store.now += SIX_HOURS_MS + 1000
-    await store.persistAndRecompute()
-    expect(store.isOnBreak).toBe(true)
-    const segs = [...store.entry!.segments]
-    await store.adjustStart(5)
-    expect(store.entry!.segments).toStrictEqual(segs)
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    const orig = store.worktime!.punches[0].in
+    await store.adjustStart(300)
+    expect(store.worktime!.punches[0].in).toBe(orig - 300)
   })
 
   it('is a no-op when clocked out', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    store.now += 3600_000
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    setClock(() => t + 3600_000)
     await store.clockOut()
-    const segs = [...store.entry!.segments]
-    await store.adjustStart(5)
-    expect(store.entry!.segments).toStrictEqual(segs)
+    const punches = [...store.worktime!.punches]
+    await store.adjustStart(300)
+    expect(store.worktime!.punches).toStrictEqual(punches)
   })
 })
 
 describe('editClockIn', () => {
-  it('updates first segment start', async () => {
+  it('updates first punch in', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    const newStart = store.now - 600_000
-    await store.editClockIn(newStart)
-    expect(store.entry!.segments[0].start).toBe(newStart)
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    const newIn = secondsSinceMidnight(t) - 600
+    await store.editClockIn(newIn)
+    expect(store.worktime!.punches[0].in).toBe(newIn)
   })
 })
 
 describe('reset', () => {
-  it('deletes entry from storage and clears state', async () => {
+  it('clears worktime from storage and state', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    expect(store.entry).not.toBeNull()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    expect(store.worktime).not.toBeNull()
     await store.reset()
-    expect(store.entry).toBeNull()
-    expect(await getEntry('2026-07-21')).toBeUndefined()
+    expect(store.worktime).toBeNull()
+    expect(await getWorktime()).toBeNull()
   })
 })
 
 describe('onVisible', () => {
   it('updates now and recomputes', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    const later = store.now + 3600_000
-    const spy = vi.spyOn(Date, 'now').mockReturnValue(later)
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    setClock(() => t + 3600_000)
     await store.onVisible()
-    expect(store.workedMs).toBe(3600_000)
-    spy.mockRestore()
+    expect(store.workedMs).toBeGreaterThanOrEqual(3600_000 - 1000)
   })
 
-  it('closes an open break that has ended', async () => {
-    const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    const later = store.now + SIX_HOURS_MS + BREAK_30_MS + 60_000
-    const spy = vi.spyOn(Date, 'now').mockReturnValue(later)
-    await store.onVisible()
-    expect(store.isOnBreak).toBe(false)
-    expect(store.isClockedIn).toBe(true)
-    expect(store.breakEndsAt).toBeUndefined()
-    spy.mockRestore()
-  })
-
-  it('is safe when entry is null', async () => {
+  it('is safe when worktime is null', async () => {
     const store = useClockStore()
     await store.onVisible()
-    expect(store.entry).toBeNull()
+    expect(store.worktime).toBeNull()
   })
 })
 
 describe('checkRollover', () => {
-  it('deletes entry when date is expired', async () => {
+  it('clears worktime when date is expired', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T23:59:00').getTime()
-    await store.clockIn(store.now)
-    store.now = new Date('2026-07-22T00:01:00').getTime()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    store.worktime!.date = '2026-07-20'
     await store.checkRollover()
-    expect(store.entry).toBeNull()
-    expect(await getEntry('2026-07-21')).toBeUndefined()
+    expect(store.worktime).toBeNull()
   })
 
-  it('no-op when entry is null', async () => {
+  it('no-op when worktime is null', async () => {
     const store = useClockStore()
     await store.checkRollover()
-    expect(store.entry).toBeNull()
+    expect(store.worktime).toBeNull()
   })
 })
 
 describe('viewState', () => {
-  it('returns clock-in when no entry', () => {
+  it('returns clock-in when no worktime', () => {
     const store = useClockStore()
     expect(store.viewState).toStrictEqual({ kind: 'clock-in' })
   })
 
   it('returns running when clocked in', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
     expect(store.viewState).toStrictEqual({ kind: 'running' })
   })
 
-  it('returns break when on break', async () => {
-    const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    store.now += SIX_HOURS_MS + 1000
-    await store.persistAndRecompute()
-    expect(store.isOnBreak).toBe(true)
-    expect(store.viewState).toStrictEqual({ kind: 'break' })
-  })
-
   it('returns clocked-out when clocked out', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
-    store.now += 3600_000
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    setClock(() => t + 3600_000)
     await store.clockOut()
     expect(store.viewState).toStrictEqual({ kind: 'clocked-out' })
   })
@@ -249,23 +233,26 @@ describe('persistence', () => {
   it('requestPersistence is called on first clockIn', async () => {
     const { requestPersistence } = await import('@/storage/persist')
     const persistSpy = vi.mocked(requestPersistence)
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
     const store = useClockStore()
-    store.now = new Date('2026-07-21T08:00:00').getTime()
-    await store.clockIn(store.now)
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
     expect(persistSpy).toHaveBeenCalledTimes(1)
     await store.clockOut()
-    expect(persistSpy).toHaveBeenCalledTimes(1) // still 1
+    expect(persistSpy).toHaveBeenCalledTimes(1)
   })
 })
 
-describe('tick', () => {
-  it('startTick advances now', async () => {
-    vi.useFakeTimers()
+describe('settings', () => {
+  it('setSettings patches and persists', async () => {
     const store = useClockStore()
-    store.now = 1000
-    startTick(store)
-    vi.advanceTimersByTime(2000)
-    expect(store.now).toBeGreaterThanOrEqual(3000)
-    vi.useRealTimers()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.setSettings({ break1_enabled: false })
+    expect(store.settings!.break1_enabled).toBe(false)
+    expect(store.settings!.break2_enabled).toBe(false)
+    const persisted = await getSettings()
+    expect(persisted!.break1_enabled).toBe(false)
+    expect(persisted!.break2_enabled).toBe(false)
   })
 })

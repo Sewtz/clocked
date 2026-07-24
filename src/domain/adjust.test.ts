@@ -1,65 +1,49 @@
 import { describe, it, expect } from 'vitest'
-import { adjustOpenWorkSegmentStart, setFirstWorkSegmentStart } from './adjust'
-import type { Segment } from './types'
+import { adjustStart, setFirstPunchIn } from './adjust'
+import type { Worktime } from './types'
 
-describe('adjustOpenWorkSegmentStart', () => {
-  it('decreases the open work segment start by N minutes', () => {
-    const segs: Segment[] = [{ type: 'work', start: 10_000 }]
-    const r = adjustOpenWorkSegmentStart(segs, 5)
-    expect(r[0].start).toBe(10_000 - 5 * 60_000)
+describe('adjustStart', () => {
+  it('decreases the first punch in by delta seconds', () => {
+    const wt: Worktime = { date: '2026-07-21', punches: [{ in: 28800 }] }
+    const r = adjustStart(wt, 300)
+    expect(r.punches[0].in).toBe(28500)
   })
 
-  it('returns a new array, does not mutate input', () => {
-    const segs: Segment[] = [{ type: 'work', start: 10_000 }]
-    Object.freeze(segs)
-    Object.freeze(segs[0])
-    const r = adjustOpenWorkSegmentStart(segs, 1)
-    expect(r).not.toBe(segs)
-    expect(r[0]).not.toBe(segs[0])
+  it('returns a new object, does not mutate input', () => {
+    const wt: Worktime = { date: '2026-07-21', punches: [{ in: 28800 }] }
+    Object.freeze(wt)
+    Object.freeze(wt.punches[0])
+    const r = adjustStart(wt, 60)
+    expect(r).not.toBe(wt)
+    expect(r.punches[0]).not.toBe(wt.punches[0])
+    expect(wt.punches[0].in).toBe(28800)
   })
 
-  it('throws when the last segment is a closed work segment', () => {
-    const segs: Segment[] = [{ type: 'work', start: 10_000, end: 20_000 }]
-    expect(() => adjustOpenWorkSegmentStart(segs, 5)).toThrow()
-  })
-
-  it('throws when the last segment is a break', () => {
-    const segs: Segment[] = [
-      { type: 'work', start: 0, end: 10_000 },
-      { type: 'break', start: 10_000, duration: 30 },
-    ]
-    expect(() => adjustOpenWorkSegmentStart(segs, 5)).toThrow()
-  })
-
-  it('throws on empty array', () => {
-    expect(() => adjustOpenWorkSegmentStart([], 5)).toThrow()
+  it('throws on empty punches', () => {
+    const wt: Worktime = { date: '2026-07-21', punches: [] }
+    expect(() => adjustStart(wt, 5)).toThrow()
   })
 })
 
-describe('setFirstWorkSegmentStart', () => {
-  it('updates the first segment start', () => {
-    const segs: Segment[] = [
-      { type: 'work', start: 10_000 },
-      { type: 'break', start: 20_000, duration: 30 },
-      { type: 'work', start: 50_000 },
-    ]
-    const r = setFirstWorkSegmentStart(segs, 5000)
-    expect(r[0].start).toBe(5000)
-    expect(r[1]).toBe(segs[1])
-    expect(r[2]).toBe(segs[2])
-  })
-
-  it('throws when first segment is a break', () => {
-    const segs: Segment[] = [{ type: 'break', start: 10_000, duration: 30 }]
-    expect(() => setFirstWorkSegmentStart(segs, 5000)).toThrow()
+describe('setFirstPunchIn', () => {
+  it('updates the first punch in', () => {
+    const wt: Worktime = { date: '2026-07-21', punches: [{ in: 28800, out: 36000 }] }
+    const r = setFirstPunchIn(wt, 25200)
+    expect(r.punches[0].in).toBe(25200)
+    expect(r.punches[0].out).toBe(36000)
   })
 
   it('does not mutate input', () => {
-    const segs: Segment[] = [{ type: 'work', start: 10_000 }]
-    Object.freeze(segs)
-    Object.freeze(segs[0])
-    const r = setFirstWorkSegmentStart(segs, 5000)
-    expect(r[0]).not.toBe(segs[0])
-    expect(segs[0].start).toBe(10_000)
+    const wt: Worktime = { date: '2026-07-21', punches: [{ in: 28800 }] }
+    Object.freeze(wt)
+    Object.freeze(wt.punches[0])
+    const r = setFirstPunchIn(wt, 25200)
+    expect(r.punches[0].in).toBe(25200)
+    expect(wt.punches[0].in).toBe(28800)
+  })
+
+  it('throws on empty punches', () => {
+    const wt: Worktime = { date: '2026-07-21', punches: [] }
+    expect(() => setFirstPunchIn(wt, 0)).toThrow()
   })
 })
