@@ -23,24 +23,30 @@ time across all sessions of the day.
 
 ## How it works
 
-- **Clock in** with a single big button, then nudge the start time with
-  `+1 / +5 / +10 min` adjustments if you opened the app a little after the real
-  clock-in.
-- **Clock out and back in** — worked time is accumulated across every session of
-  the day.
-- **Mandatory breaks** are applied automatically based on accumulated worked
-  time. The break rules (trigger threshold, duration, enabled/disabled) are
-  configurable in settings. When a break is running, a clear
-  *on break — resumes in `NN:NN`* overlay is shown, and the clock resumes
-  automatically.
-- **Live elapsed display** in `HH:MM`, computed from stored segment timestamps
-  so the timer stays correct across screen lock and app restarts (it does not
-  tick while hidden).
+- **Clock in** with a single button. Worked time is accumulated across every
+  session of the day — clock out and back in as often as you need.
+- **Live elapsed display** in `HH:MM`, computed from stored punch timestamps so
+  the timer stays correct across screen lock and app restarts (it does not tick
+  while hidden).
+- **Stats grid** shows Worked, Breaks, and Remaining (or Overtime once you pass
+  the daily target).
+- **Daily target bar** shows progress toward your configurable target, with the
+  0h / half / full markers. The bar turns overtime-colored past 100%.
+- **Two automatic breaks** are applied based on accumulated worked time. Each
+  break has its own trigger threshold and duration, and can be toggled on or off
+  in settings. While a break is running, a *Mandatory break (NN min)* banner
+  with a progress bar and a `MM:SS` countdown is shown, and work resumes
+  automatically when the break ends.
+- **Next-milestone hint** shows the upcoming auto-break and how far away it is.
+- **Timeline** visualizes the day as colored segments (Work / Brk / Gap) with
+  their start→end times and durations. Tap it to open the **Edit times** dialog,
+  where you can correct any punch in/out time directly — useful if you forgot to
+  clock in right away.
 - **Daily reset at midnight** — yesterday's entry is discarded, the clock-in
   button comes back.
 - **Fully local** — every entry lives in IndexedDB on your device. The app makes
   no network calls at runtime and works in airplane mode after first install.
-- **Configurable daily target and limit** are stored (UI surfacing planned).
+- **Configurable daily target and automatic breaks** are editable in Settings.
 
 ### Why "fully local"?
 
