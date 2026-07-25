@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useClockStore } from '@/stores/clock'
 import { formatHHMM } from '@/domain/format'
+import EditTimesDialog from './EditTimesDialog.vue'
 
 const store = useClockStore()
+const editOpen = ref(false)
 
 function fmtTime(sec: number): string {
   const d = new Date()
@@ -47,7 +49,13 @@ const trackSegs = computed(() =>
 </script>
 
 <template>
-  <div v-if="store.segments.length > 0" class="w-full max-w-xl">
+  <button
+    v-if="store.segments.length > 0"
+    type="button"
+    class="w-full max-w-xl text-left cursor-pointer hover:opacity-80 transition-opacity"
+    @click="editOpen = true"
+    aria-label="Edit times"
+  >
     <div class="flex justify-between mb-2">
       <span class="font-mono text-xs text-text-faint tracking-widest uppercase">Timeline</span>
       <span class="font-mono text-xs text-text-faint">
@@ -89,5 +97,6 @@ const trackSegs = computed(() =>
         <span class="ml-auto">{{ fmtDur(seg.endSec - seg.startSec) }}</span>
       </div>
     </div>
-  </div>
+  </button>
+  <EditTimesDialog v-if="editOpen" @close="editOpen = false" />
 </template>

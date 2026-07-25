@@ -9,6 +9,8 @@
 │   - RunningView    (elapsed HH:MM, status,     │
 │                     clock-out, mandatory break) │
 │   - SettingsDialog (gear icon, break config)   │
+│   - EditTimesDialog (click Timeline, edit any  │
+│     in/out via OS time picker)                 │
 │   - StatsGrid / DailyTargetBar / Timeline      │
 │   - BreakBanner / MilestoneHint                │
 │   - ui/NumberInput / ui/Toggle                 │

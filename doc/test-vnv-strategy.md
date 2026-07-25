@@ -105,7 +105,8 @@ Run with `pnpm preview` (serves on `localhost`, so the real SW registers):
 8. **+min adjustment buttons** — same as before.
 9. **Midnight rollover** — same as before.
 10. **Persistence permission** — same as before.
-11. **Debug API console walkthrough** — run the `__clocked.help()` snippet, verify each method works without errors:
+11. **Edit times** — click the Timeline (track or list rows) → `EditTimesDialog` opens. Tap a time input → OS native time picker appears. Change a time → Save → Timeline updates. Verify out-of-order edits (out before in, or gap violation) show an inline red error and Save stays disabled. Reload page → edited times persist.
+12. **Debug API console walkthrough** — run the `__clocked.help()` snippet, verify each method works without errors:
     ```js
     __clocked.help()
     __clocked.setPunches([{in: 0}, {in: 32400, out: 36000}])

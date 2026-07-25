@@ -60,10 +60,10 @@ export function installDebugApi(store: ReturnType<typeof useClockStore>) {
     },
 
     setPunches: async (punches: Array<{ in: number; out?: number }>) => {
-      store.worktime = { date: todayString(new Date(now())), punches }
-      const last = punches[punches.length - 1]
-      store._isClockedIn = !!(last && last.out === undefined)
-      await store.persistAndRecompute()
+      if (!store.worktime) {
+        store.worktime = { date: todayString(new Date(now())), punches: [] }
+      }
+      await store.replacePunches(punches)
     },
 
     clear: async () => {

@@ -393,3 +393,63 @@ describe('redesign getters', () => {
     expect(store.segments.some(s => s.type === 'gap')).toBe(true)
   })
 })
+
+describe('replacePunches', () => {
+  it('replaces punches and recomputes _isClockedIn from last punch', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    await store.replacePunches([{ in: 25200 }, { in: 28800, out: 32400 }])
+    expect(store.worktime!.punches).toEqual([
+      { in: 25200 },
+      { in: 28800, out: 32400 },
+    ])
+    expect(store._isClockedIn).toBe(false)
+    expect(store.viewState.kind).toBe('clocked-out')
+  })
+
+  it('preserves running punch when last punch has no out', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    await store.replacePunches([{ in: 28800 }])
+    expect(store._isClockedIn).toBe(true)
+    expect(store.viewState.kind).toBe('running')
+  })
+
+  it('clamps punches to 0..86399', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    await store.replacePunches([{ in: -100 }, { in: 90000, out: 100000 }])
+    expect(store.worktime!.punches[0].in).toBe(0)
+    expect(store.worktime!.punches[1].in).toBe(86399)
+    expect(store.worktime!.punches[1].out).toBe(86399)
+  })
+
+  it('no-ops when worktime is null', async () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = null
+    await store.replacePunches([{ in: 28800 }])
+    expect(store.worktime).toBeNull()
+  })
+
+  it('persists to storage', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    await store.replacePunches([{ in: 25200 }])
+    const { getWorktime } = await import('@/storage/worktime')
+    const fetched = await getWorktime()
+    expect(fetched).toStrictEqual(store.worktime)
+  })
+})
