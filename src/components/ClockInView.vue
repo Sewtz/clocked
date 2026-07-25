@@ -15,9 +15,14 @@ const isEmpty = computed(() => !store.worktime)
 
 <template>
   <div class="flex flex-col items-center gap-12 w-full max-w-xl">
-    <div v-if="isClockedOut" class="flex flex-col items-center gap-1">
-      <div class="font-mono text-5xl tabular-nums text-text">{{ workedToday }}</div>
-      <div class="font-mono text-xs text-text-faint mt-1 tracking-widest uppercase">Worked today</div>
+    <div v-if="isClockedOut" class="text-center">
+      <div
+        class="font-mono text-[4.5rem] leading-none tracking-tight tabular-nums"
+        :style="{ color: 'var(--color-text-faint)' }"
+      >
+        {{ workedToday }}
+      </div>
+      <div class="font-mono text-xs text-text-faint mt-2 tracking-widest uppercase">Worked today</div>
     </div>
 
     <button
