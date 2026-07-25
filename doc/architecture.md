@@ -99,14 +99,23 @@ Input: `punches` (in/out seconds-since-midnight) + `settings` + `nowSeconds` (se
 
 1. Compute `workedGross = Σ(out_i − in_i)` over closed punches; an open punch counts `now − in`.
 2. Compute gaps = `in_{i+1} − out_i` between consecutive punches.
-3. For each enabled break `B` (break1 first, then break2; break2 only eligible after break1 is satisfied):
-   - When accumulated worked time-so-far crosses `B.trigger`:
-     - If a real gap ≥ `B.duration` exists at or before the trigger point, consume that gap as the break (count its duration toward break time, no pause introduced).
-     - Otherwise, introduce a **mandatory pause** of `B.duration`. The break state becomes `break1`/`break2`, and `breakEndsAt = triggerWallClock + B.duration` (epoch-ms for the overlay countdown).
-   - A disabled break (`*_enabled = false`) is skipped entirely.
-4. **Aggregate rule:** if `Σ gaps ≥ sum of enabled break durations`, use all gaps as break time (no mandatory pauses introduced).
-5. `breakSeconds = consumed gaps + introduced pauses`; `workedSeconds = workedGross − breakSeconds`.
-6. `displaySeconds = workedSeconds` (breaks are excluded).
+3. **Gap classification (per-break, ordered):**
+   - Walk gaps chronologically.
+   - A gap satisfies **break1** iff `gap > break1_duration`. The first `break1_duration` of that gap counts as break1; the remainder is "clocked out" (neither work nor break).
+   - After break1 is satisfied (by gap or by an elapsed mandatory pause), a later gap satisfies **break2** iff `gap > break2_duration`. The first `break2_duration` of that gap counts as break2; remainder is "clocked out".
+   - A single very long gap (`> break1_duration + break2_duration`) satisfies both breaks in one pass.
+   - Short gaps (`<=` relevant break duration) do not satisfy any break; they remain `gap-break` segments but contribute 0 to `breakSeconds`.
+4. **Mandatory pause budget:** For each enabled break NOT satisfied by a gap, a mandatory pause of that break's full duration may be injected at its trigger point (subject to live/elapsed rule below).
+5. **Walk punches** accumulating `workedElapsed` (work seconds, excluding gaps and mandatory pauses).
+   - When `workedElapsed` crosses `break1_trigger` and break1 not gap-satisfied:
+     - Insert `mandatory-break` segment of `break1_duration` at the trigger second.
+     - If `nowSec < trigger + break1_duration` → **live**: `breakState='break1'`, `breakEndsAtMs` set, exit walk.
+     - Else (`nowSec >= trigger + break1_duration`) → **elapsed**: `breakState='running'`, continue walk so break2 can be evaluated.
+   - When `workedElapsed` crosses `break2_trigger` (after break1 done) and break2 not gap-satisfied:
+     - Same live/elapsed logic for break2.
+6. `breakSeconds = sum of consumed gap portions + sum of mandatory pause durations (live or elapsed)`.
+   `workedSeconds = max(0, workedGross − breakSeconds)`.
+7. `displaySeconds = workedSeconds` (breaks excluded).
 
 ### State machine
 
@@ -140,7 +149,7 @@ When the recompute algorithm introduces a mandatory pause:
 - `viewState.kind` becomes `'break'` (break1 or break2).
 - The break timer is derived from `breakEndsAt - now()` (epoch-ms diff).
 - The inline `BreakBanner` counts down MM:SS; when it reaches zero the state reverts to `running`.
-- Clock-out is **disabled** during a mandatory break — breaks cannot be skipped. The `RunningView` hides the Clock Out button when `viewState.kind === 'break'`.
+- Clock-out is **allowed** during a mandatory break; it closes the open punch, ends the day, and retains the derived break segment in the timeline. Once clocked out, `viewState` becomes `clocked-out` regardless of any lingering derived break state.
 
 ### Midnight rollover
 

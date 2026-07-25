@@ -79,8 +79,8 @@ ADR-style log. Each entry: context → decision → consequences. Append new dec
 ## ADR-013 — Break overlay with auto-resume; clock-out disabled during break
 
 - **Context:** when a mandatory break fires, the user needs to know it is happening and how long remains; breaks are mandatory.
-- **Decision:** while an open `break` segment is the current segment, the UI shows a "Break — NN:NN remaining" countdown. When `now - break.start >= break.duration`, the break auto-closes and a new `work` segment auto-opens. Clock-out is disabled while a break is in progress.
-- **Consequences:** breaks cannot be skipped; the user can still reset the day entirely (which deletes the entry).
+- **Decision:** while a mandatory break is live, the UI shows an inline banner with an MM:SS countdown. When `nowSec >= trigger + duration`, the break auto-closes and state reverts to `running`. Clock-out is **allowed** during a mandatory break (supersedes the original 'disabled' decision): clocking out closes the open punch, ends the day, and retains the derived break segment in the timeline.
+- **Consequences:** breaks still cannot be *skipped* while the user remains clocked in; the only way to end a live break early is to clock out, which ends the day.
 
 ## ADR-014 — +min buttons move the open work segment's start earlier
 
@@ -165,3 +165,14 @@ ADR-style log. Each entry: context → decision → consequences. Append new dec
 ## Resolved (no longer pending)
 
 All questions in `discussion.md` have been answered. New decisions will be appended here as they arise during implementation.
+
+## ADR-027 — Per-gap break classification
+
+- **Context:** the original aggregate gap rule (ADR-022) summed all gaps and compared against the total required break time. This allowed many small gaps (e.g. bathroom breaks) to satisfy mandatory break requirements, which doesn't match labor-rule intent.
+- **Decision:** a gap counts as a break only if it is strictly longer than that break's own duration. 
+  - break1 is satisfied by a gap `> break1_duration`.
+  - The same gap also satisfies break2 if `> break1_duration + break2_duration` (a "very long" gap).
+  - break2 can be satisfied by a *later* gap `> break2_duration`, but only after break1 is already satisfied.
+  - Only the consumed break durations count toward `breakSeconds`; the remainder of a satisfying gap is "clocked out" time (neither work nor break).
+  - If no qualifying gap exists by the time worked time crosses a break's trigger, a mandatory pause of that break's full duration is injected at the trigger point. The pause is "live" while `nowSec < trigger + duration` (banner shows countdown), then "elapsed" thereafter (historical segment, state reverts to `running`, walk continues for next break).
+- **Consequences:** short gaps no longer cover mandatory breaks; the timeline still shows them as `gap-break` segments. The mandatory-break expiry (Bug A) and break2 reachability (Bug B) fall out naturally from the per-break walk. Clock-out during a live break (Bug C) is now permitted and ends the day cleanly.

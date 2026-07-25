@@ -34,4 +34,18 @@ describe('BreakBanner', () => {
       expect(wrapper.text()).toContain('min')
     }
   })
+
+  it('does not render when breakEndsAt <= now (break elapsed)', () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store._isClockedIn = true
+    store.worktime = { date: '2026-07-21', punches: [{ in: 0 }] }
+    // Set breakEndsAt in the past
+    const pastMs = new Date('2026-07-21T06:31:00').getTime()
+    setClock(() => pastMs)
+    store.now = pastMs
+    const wrapper = mount(BreakBanner)
+    // Even if isOnBreak is true from recompute, breakEndsAt <= now should hide banner
+    expect(wrapper.text()).toBe('')
+  })
 })

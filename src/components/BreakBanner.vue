@@ -19,7 +19,7 @@ const pctFull = computed(() =>
 
 <template>
   <div
-    v-if="store.isOnBreak && store.breakEndsAt"
+    v-if="store.isOnBreak && store.breakEndsAt && store.breakEndsAt > store.now"
     class="w-full max-w-xl border border-break/30 bg-break/5 px-5 py-3 flex items-center justify-between"
   >
     <span class="font-mono text-xs text-break tracking-widest uppercase">

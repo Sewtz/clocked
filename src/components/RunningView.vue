@@ -43,7 +43,7 @@ const statusLabel = computed(() => {
     <BreakBanner />
     <MilestoneHint />
 
-    <div v-if="isRunning" class="flex gap-3">
+    <div v-if="isRunning || isOnBreak" class="flex gap-3">
       <button
         type="button"
         class="

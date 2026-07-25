@@ -53,14 +53,14 @@ export const useClockStore = defineStore('clock', {
     breakEndsAt(): number | undefined { return this.computed.breakEndsAtMs },
 
     isClockedIn(): boolean { return this._isClockedIn },
-    isClockedOut(): boolean { return !!this.worktime && !this._isClockedIn && !this.isOnBreak },
+    isClockedOut(): boolean { return !!this.worktime && !this._isClockedIn },
     isOnBreak(): boolean { return this.breakState === 'break1' || this.breakState === 'break2' },
 
     viewState(): ViewState {
       if (!this.worktime) return { kind: 'clock-in' }
+      if (!this._isClockedIn) return { kind: 'clocked-out' }
       if (this.isOnBreak) return { kind: 'break' }
-      if (this._isClockedIn) return { kind: 'running' }
-      return { kind: 'clocked-out' }
+      return { kind: 'running' }
     },
 
     segments(): DerivedSegment[] {

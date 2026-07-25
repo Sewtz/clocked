@@ -40,17 +40,19 @@ describe('RunningView', () => {
     expect(wrapper.text()).toContain('Clock Out')
   })
 
-  it('hides Clock Out button when on break', () => {
+  it('shows Clock Out button when on break', () => {
+    // Punch at 08:00 (28800s). Break1 triggers at 6h worked = 14:00 (50400s wall).
+    // Break1 window: 14:00-14:30 (50400-52200). At 14:15 (51300s wall clock), we're in break1.
+    // Worked at 14:15 = 51300 - 28800 = 22500s = 6h15m.
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-21', punches: [{ in: 0 }] }
-    store._isClockedIn = false
-    setLocalTime(store, 8)
+    store.worktime = { date: '2026-07-21', punches: [{ in: 28800 }] }
+    store._isClockedIn = true
+    // 2026-07-21 14:15:00 in ms
+    store.now = new Date('2026-07-21T14:15:00').getTime()
     const wrapper = mount(RunningView)
-    if (store.viewState.kind === 'break') {
-      expect(wrapper.text()).not.toContain('Clock Out')
-      expect(wrapper.text()).toContain('On mandatory break')
-    }
+    expect(wrapper.text()).toContain('Clock Out')
+    expect(wrapper.text()).toContain('On mandatory break')
   })
 
   it('calls store.clockOut on Clock Out button click', async () => {

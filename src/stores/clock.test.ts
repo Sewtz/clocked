@@ -257,6 +257,42 @@ describe('settings', () => {
   })
 })
 
+describe('clock out during break', () => {
+  it('clocking out during a break sets viewState to clocked-out', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    // Advance to during break1 (6h30m after clock-in = 14:30)
+    // Actually break1 triggers at 6h worked = 14:00, ends at 14:30
+    // So at 14:15 (6h15m worked), we're in break1
+    setClock(() => t + 22500_000) // 6h15m = 22500s
+    store.now = t + 22500_000
+    expect(store.breakState).toBe('break1')
+    // Now clock out
+    await store.clockOut()
+    expect(store.isClockedIn).toBe(false)
+    expect(store.isClockedOut).toBe(true)
+    expect(store.viewState.kind).toBe('clocked-out')
+  })
+
+  it('clockIn is still blocked during a break', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    // Advance to during break1
+    setClock(() => t + 22500_000)
+    store.now = t + 22500_000
+    // Try to clock in (should be no-op)
+    await store.clockIn()
+    // Should still have only 1 punch
+    expect(store.worktime!.punches).toHaveLength(1)
+  })
+})
+
 describe('redesign getters', () => {
   it('returns empty values when no worktime', () => {
     const store = useClockStore()

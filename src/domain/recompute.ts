@@ -30,20 +30,40 @@ export function recompute(
     }
   }
 
-  const totalGaps = gaps.reduce((a, b) => a + b, 0)
-
   const break1Dur = settings.break1_enabled ? settings.break1_duration : 0
   const break2Dur = settings.break2_enabled ? settings.break2_duration : 0
-  const totalRequired = break1Dur + break2Dur
   const b1Trigger = settings.break1_enabled ? settings.break1_trigger : Infinity
   const b2Trigger = settings.break2_enabled ? settings.break2_trigger : Infinity
 
-  let breakSeconds = totalGaps
-  let mandatoryPauseSeconds = 0
-  let breakEndsAtMs: number | undefined
+  let break1SatisfiedByGap = false
+  let break2SatisfiedByGap = false
+  let gapBreakSeconds = 0
+
+  {
+    let need1 = break1Dur > 0
+    let need2 = break2Dur > 0
+    for (const g of gaps) {
+      let remaining = g
+      if (need1 && remaining > break1Dur) {
+        gapBreakSeconds += break1Dur
+        remaining -= break1Dur
+        break1SatisfiedByGap = true
+        need1 = false
+      }
+      if (!need1 && need2 && remaining > break2Dur) {
+        gapBreakSeconds += break2Dur
+        remaining -= break2Dur
+        break2SatisfiedByGap = true
+        need2 = false
+      }
+    }
+  }
+
   let breakState: BreakState = 'running'
-  let break1Done = false
-  let break2Done = false
+  let breakEndsAtMs: number | undefined
+  let mandatoryBreakSeconds = 0
+  let break1Done = break1SatisfiedByGap || break1Dur === 0
+  let break2Done = break2SatisfiedByGap || break2Dur === 0
 
   const segments: DerivedSegment[] = []
 
@@ -64,95 +84,58 @@ export function recompute(
 
   segments.sort((a, b) => a.startSec - b.startSec)
 
-  if (totalGaps < totalRequired) {
-    mandatoryPauseSeconds = totalRequired - totalGaps
-
+  if (!(break1Done && break2Done)) {
     let workedElapsed = 0
 
-    for (let pi = 0; pi < punches.length && breakEndsAtMs === undefined; pi++) {
+    for (let pi = 0; pi < punches.length; pi++) {
       const p = punches[pi]
       const end = p.out ?? nowSec
       const dur = end - p.in
-
       let consumed = 0
 
       if (!break1Done && workedElapsed < b1Trigger) {
         const toTrigger = b1Trigger - workedElapsed
         if (toTrigger <= dur) {
-          break1Done = true
           consumed += toTrigger
-
-          const mandatory1 = Math.min(mandatoryPauseSeconds, break1Dur)
-          if (mandatory1 > 0) {
-            const triggerSec = p.in + consumed
-            const triggerInstantMs = epochMsForSeconds(triggerSec)
-            breakEndsAtMs = triggerInstantMs + mandatory1 * 1000
+          const triggerSec = p.in + consumed
+          const breakEnd = triggerSec + break1Dur
+          insertMandatoryBreak(segments, triggerSec, break1Dur, 0)
+          mandatoryBreakSeconds += break1Dur
+          break1Done = true
+          if (nowSec < breakEnd) {
+            breakEndsAtMs = epochMsForSeconds(triggerSec) + break1Dur * 1000
             breakState = 'break1'
-            mandatoryPauseSeconds -= mandatory1
-            insertMandatoryBreak(segments, triggerSec, mandatory1, 0)
+            break
           }
-
-          if (breakEndsAtMs === undefined) {
-            workedElapsed = b1Trigger
-            const remaining = dur - consumed
-            const pause1 = Math.min(mandatoryPauseSeconds, break1Dur - mandatory1)
-            if (pause1 > 0) {
-              const triggerSec = p.in + consumed
-              breakEndsAtMs = epochMsForSeconds(triggerSec) + pause1 * 1000
-              breakState = 'break1'
-              mandatoryPauseSeconds -= pause1
-              insertMandatoryBreak(segments, triggerSec, pause1, 0)
-            } else {
-              workedElapsed += remaining
-              consumed = dur
-            }
-          }
+          workedElapsed = b1Trigger
         }
       }
 
-      if (breakEndsAtMs !== undefined) break
-
-      if (break1Done && !break2Done && workedElapsed < b2Trigger) {
+      if (!break2Done && break1Done && workedElapsed < b2Trigger) {
         const remainingDur = dur - consumed
         const toTrigger2 = b2Trigger - workedElapsed
         if (toTrigger2 > 0 && toTrigger2 <= remainingDur) {
-          break2Done = true
           consumed += toTrigger2
-
-          const mandatory2 = Math.min(mandatoryPauseSeconds, break2Dur)
-          if (mandatory2 > 0) {
-            const triggerSec = p.in + consumed
-            const triggerInstantMs = epochMsForSeconds(triggerSec)
-            breakEndsAtMs = triggerInstantMs + mandatory2 * 1000
+          const triggerSec = p.in + consumed
+          const breakEnd2 = triggerSec + break2Dur
+          insertMandatoryBreak(segments, triggerSec, break2Dur, 1)
+          mandatoryBreakSeconds += break2Dur
+          break2Done = true
+          if (nowSec < breakEnd2) {
+            breakEndsAtMs = epochMsForSeconds(triggerSec) + break2Dur * 1000
             breakState = 'break2'
-            mandatoryPauseSeconds -= mandatory2
-            insertMandatoryBreak(segments, triggerSec, mandatory2, 1)
+            break
           }
-
-          if (breakEndsAtMs === undefined) {
-            workedElapsed = b2Trigger
-            const remaining = dur - consumed
-            const pause2 = Math.min(mandatoryPauseSeconds, break2Dur - mandatory2)
-            if (pause2 > 0) {
-              const triggerSec = p.in + consumed
-              breakEndsAtMs = epochMsForSeconds(triggerSec) + pause2 * 1000
-              breakState = 'break2'
-              mandatoryPauseSeconds -= pause2
-              insertMandatoryBreak(segments, triggerSec, pause2, 1)
-            } else {
-              workedElapsed += remaining
-            }
-          }
+          workedElapsed = b2Trigger
         }
       }
 
       if (breakEndsAtMs !== undefined) break
-
       workedElapsed += dur - consumed
     }
   }
 
-  breakSeconds = totalGaps + (totalRequired - totalGaps - mandatoryPauseSeconds)
+  const breakSeconds = gapBreakSeconds + mandatoryBreakSeconds
   const workedSeconds = Math.max(0, workedGross - breakSeconds)
 
   return {

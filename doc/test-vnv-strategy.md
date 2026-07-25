@@ -50,18 +50,15 @@ Cases:
 ### 2. Component tests (Vitest + @vue/test-utils, happy-dom)
 
 - `ClockInView`:
-  - tapping the red button calls the store action with current time.
-  - adjustment buttons backdate the punch start.
-  - custom-time field delegates to `<input type="time">` and writes the picked value.
-  - when clocked-out, renders `formatHHMM(workedSeconds)` above the red button with label "Worked today", and renders a Reset day button that calls `store.reset`; neither is rendered in the fresh clock-in state.
+  - tapping the rectangular green button calls the store action with current time.
+  - when clocked-out, renders `formatHHMM(workedSeconds)` above the green button with label "Worked today"; neither the button nor the label renders in the fresh clock-in state.
 - `RunningView`:
   - renders `HH:MM` from the store's `displayMs`.
-  - edit and reset actions invoke store mutations.
   - clock-out closes the open punch and returns to `ClockInView`.
-- `BreakOverlay`:
-  - renders the correct remaining time, counting down.
-  - when `now` reaches `breakEndsAt`, the overlay closes and `RunningView` resumes.
-  - clock-out button is hidden / disabled while the overlay is shown.
+  - Clock Out button is shown **both while running and during a mandatory break**.
+- `BreakBanner`:
+  - renders the correct remaining time, counting down MM:SS.
+  - when `now` reaches `breakEndsAt`, the banner disappears and `RunningView` resumes (state reverts to `running`).
 
 ### 3. Store tests (Pinia, in-memory)
 
@@ -101,7 +98,7 @@ Run with `pnpm preview` (serves on `localhost`, so the real SW registers):
 4. **Entries persist after reload** — clock in, hard reload. Worktime + elapsed come back.
 5. **Multiple sessions per day** — clock in/out/in, accumulated worked time correct.
 6. **Clocked-out account display** — same as before.
-7. **Mandatory breaks** — use `window.__clocked.setPunches` + `tickTo` to test break1/break2 firing, overlay appearance, auto-resume, disabled state. Also verify break enable/disable toggles work:
+7. **Mandatory breaks** — use `window.__clocked.setPunches` + `tickTo` to test break1/break2 firing, **inline banner** appearance, auto-resume (state reverts to `running` when countdown reaches 00:00), and clock-out during break (should close the punch, end the day, retain the break segment in the timeline). Also verify break enable/disable toggles work:
    - `__clocked.setSettings({break1_enabled: false})` — no breaks fire at any workload.
    - `__clocked.setSettings({break1_enabled: true, break2_enabled: true})` — both breaks fire in order.
    - `__clocked.setSettings({break1_enabled: false, break2_enabled: true})` — break2 silently stays false.
