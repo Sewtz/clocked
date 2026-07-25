@@ -39,14 +39,24 @@ This file is the working scratchpad for shaping the Clocked PWA. Once a topic re
 7. **Multiple sessions per day** — yes. Accumulated sum across all sessions. *(Resolved.)*
 8. **Edit clock-in after the fact** — editing the clock-in time recomputates break eligibility from the new start. *(Resolved.)*
 9. **Tamper / audit** — no audit. The app is a personal helper; no separate "true" timestamp is recorded. *(Resolved.)*
+10. **Clocked-out account display** — when clocked out, the UI shows the accumulated worked time above the red button with label "Worked today", plus a Reset day button. Fresh clock-in state (no entry) does not show either element. *(Resolved — see ADR-017.)*
 
-No open questions currently. New ones get added below as the implementation progresses.
+## Data model restructuring (2026-07-24)
+
+### Context
+The original segment-based model stored work/break segments as epoch-ms with hardcoded thresholds. This made the break logic opaque and prevented configurable break rules or a daily target/limit.
+
+### Decision (moved to ADR-019–025)
+- Replace single `entries` store with two stores: `settings` (persistent, configurable) and `worktime` (in/out punches, reset after midnight).
+- Breaks are auto-derived from punch gaps + settings, not stored explicitly.
+- Thresholds moved from hardcoded constants to configurable settings with enable/disable flags.
+- Added injectable clock + always-on debug API.
+
+### Details in architecture.md and plan/08-restructure-storage.md
+
+All settled. New questions get added below as implementation progresses.
 
 ---
-
-## Resolved questions (continued)
-
-10. **Clocked-out account display** — when clocked out, the UI shows the accumulated worked time above the red button with label "Worked today", plus a Reset day button. Fresh clock-in state (no entry) does not show either element. *(Resolved — see ADR-017.)*
 
 ## Open questions
 

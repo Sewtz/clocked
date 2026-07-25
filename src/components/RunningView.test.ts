@@ -2,61 +2,81 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useClockStore } from '@/stores/clock'
-import { clearAllEntries } from '@/storage/entries'
+import { DEFAULT_SETTINGS } from '@/domain/types'
+import { formatHHMM } from '@/domain/format'
 import RunningView from './RunningView.vue'
 
-beforeEach(async () => {
+function setLocalTime(store: ReturnType<typeof useClockStore>, localHour: number) {
+  const d = new Date(2026, 6, 21, localHour, 0, 0, 0)
+  store.now = d.getTime()
+}
+
+beforeEach(() => {
   setActivePinia(createPinia())
-  await clearAllEntries()
 })
 
 describe('RunningView', () => {
-  it('renders formatHHMM(displayMs)', async () => {
+  it('renders worked time and stats when running', () => {
     const store = useClockStore()
-    const t = new Date('2026-07-21T08:00:00').getTime()
-    store.now = t
-    await store.clockIn(t)
-    store.now = t + 3600_000
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-21', punches: [{ in: 0 }] }
+    store._isClockedIn = true
+    setLocalTime(store, 1)
     const wrapper = mount(RunningView)
-    expect(wrapper.text()).toContain('01:00')
+    expect(wrapper.text()).toContain(formatHHMM(store.workedMs))
+    expect(wrapper.text()).toContain('Current session')
+    expect(wrapper.text()).toContain('Worked')
+    expect(wrapper.text()).toContain('Breaks')
+    expect(wrapper.text()).toContain('Daily target')
   })
 
-  it('clicking Clock Out calls store.clockOut', async () => {
+  it('renders Clock Out button when running', () => {
     const store = useClockStore()
-    const t = new Date('2026-07-21T08:00:00').getTime()
-    store.now = t
-    await store.clockIn(t)
-    store.clockOut = vi.fn()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-21', punches: [{ in: 0 }] }
+    store._isClockedIn = true
+    setLocalTime(store, 1)
     const wrapper = mount(RunningView)
-    const buttons = wrapper.findAll('button')
-    const btn = buttons.find(b => b.text() === 'Clock Out')
-    await btn!.trigger('click')
-    expect(store.clockOut).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Clock Out')
   })
 
-  it('clicking +5min calls store.adjustStart(5)', async () => {
+  it('shows Clock Out button when on break', () => {
+    // Punch at 08:00 (28800s). Break1 triggers at 6h worked = 14:00 (50400s wall).
+    // Break1 window: 14:00-14:30 (50400-52200). At 14:15 (51300s wall clock), we're in break1.
+    // Worked at 14:15 = 51300 - 28800 = 22500s = 6h15m.
     const store = useClockStore()
-    const t = new Date('2026-07-21T08:00:00').getTime()
-    store.now = t
-    await store.clockIn(t)
-    store.adjustStart = vi.fn()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-21', punches: [{ in: 28800 }] }
+    store._isClockedIn = true
+    // 2026-07-21 14:15:00 in ms
+    store.now = new Date('2026-07-21T14:15:00').getTime()
     const wrapper = mount(RunningView)
-    const buttons = wrapper.findAll('button')
-    const btn = buttons.find(b => b.text() === '+5min')
-    await btn!.trigger('click')
-    expect(store.adjustStart).toHaveBeenCalledWith(5)
+    expect(wrapper.text()).toContain('Clock Out')
+    expect(wrapper.text()).toContain('On mandatory break')
   })
 
-  it('clicking Reset day calls store.reset', async () => {
+  it('calls store.clockOut on Clock Out button click', async () => {
     const store = useClockStore()
-    const t = new Date('2026-07-21T08:00:00').getTime()
-    store.now = t
-    await store.clockIn(t)
-    store.reset = vi.fn()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-21', punches: [{ in: 0 }] }
+    store._isClockedIn = true
+    setLocalTime(store, 1)
+    const spy = vi.spyOn(store, 'clockOut')
     const wrapper = mount(RunningView)
-    const buttons = wrapper.findAll('button')
-    const btn = buttons.find(b => b.text() === 'Reset day')
-    await btn!.trigger('click')
-    expect(store.reset).toHaveBeenCalled()
+    await wrapper.find('button').trigger('click')
+    expect(spy).toHaveBeenCalled()
+  })
+
+  it('does not render old WP4 affordances', () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-21', punches: [{ in: 0 }] }
+    store._isClockedIn = true
+    setLocalTime(store, 1)
+    const wrapper = mount(RunningView)
+    expect(wrapper.find('input[type="time"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('+1min')
+    expect(wrapper.text()).not.toContain('+5min')
+    expect(wrapper.text()).not.toContain('Reset day')
   })
 })

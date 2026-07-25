@@ -4,7 +4,7 @@ Step-by-step plan for implementing the Clocked PWA. Designed to be executed by a
 
 ## How to use this plan
 
-1. Work the work packages **in strict order**: WP0 → WP1 → ... → WP7. Do not skip ahead.
+1. Work the work packages **in strict order**: WP0 → WP8 → WP1 → ... → WP7. WP8 restructures storage from the old `entries`/segment model to the new `settings`+`worktime`/in-out-punch model and must be completed before any WP1–WP3 tasks are attempted, since those packages describe the old model. Do not skip ahead.
 2. Within each WP, work the tasks in order (T1, T2, ...). Tasks have explicit `Dependencies` listing prior task IDs.
 3. Each task has: **Goal**, **Files**, **Approach** (with code skeletons where helpful), **Dependencies**, **Acceptance criteria**, **V&V**, **Pitfalls**.
 4. After every task, run the V&V commands listed. Do not mark a task done until acceptance criteria are met **and** V&V passes.
@@ -23,8 +23,14 @@ Step-by-step plan for implementing the Clocked PWA. Designed to be executed by a
 | `05-pwa.md` | WP5 — PWA wiring | 5 |
 | `06-styling.md` | WP6 — Styling & polish | 5 |
 | `07-vnv.md` | WP7 — Manual V&V | 9 |
+| `08-restructure-storage.md` | WP8 — Storage restructure (settings + worktime) | 12 |
+| `09-redesign-ui.md` | WP9 — UI redesign (Figma v1.0) | 10 |
 
-**Total: ~53 tasks.**
+**Total: ~75 tasks.**
+
+**Note on WP8:** This work package supersedes parts of WP1, WP2, and WP3. After WP8 is complete, the old `entries` store, `Entry`/`Segment` types, and `recomputeBreaks` function are removed. Do not work WP1/WP2/WP3 tasks before WP8 — they describe the old model.
+
+**Note on WP9:** This work package supersedes WP4 and WP6 for the visual layer. Work WP9 only after WP8 — it depends on the new store getters and the `Recomputed.segments` field added in WP9-T2/T3, which build on the WP8 punch/settings model. WP4's data-flow, lifecycle, and accessibility guidance still apply where WP9 does not override them. The WP4 `BreakOverlay` component is deleted by WP9-T9; mandatory breaks are rendered inline by `RunningView`.
 
 ## Library versions (majors pinned)
 
@@ -56,18 +62,27 @@ Dev:
 
 - **Package manager:** `pnpm` only. Do not commit `package-lock.json` or `yarn.lock`.
 - **TypeScript:** strict mode. No `any` without a comment explaining why.
-- **File layout:**
+- **File layout (post-WP8):**
   ```
   src/
     domain/        # pure logic, no Vue dependency
       types.ts
       date.ts
       format.ts
-      recomputeBreaks.ts
+      clock.ts          # injectable clock (now() / setClock)
+      recompute.ts      # break derivation from punches + settings
+      settings.ts       # settings merge-patch + invariant enforcement
+      adjust.ts         # adjust first punch in
       *.test.ts
     storage/       # idb wrapper
       db.ts
-      entries.ts
+      settings.ts
+      worktime.ts
+      persist.ts
+      *.test.ts
+    debug/         # console debug API
+      api.ts
+      global.d.ts
       *.test.ts
     stores/        # Pinia
       clock.ts
@@ -75,7 +90,14 @@ Dev:
     components/    # Vue SFCs
       ClockInView.vue
       RunningView.vue
-      BreakOverlay.vue
+      SettingsDialog.vue
+      StatsGrid.vue
+      DailyTargetBar.vue
+      Timeline.vue
+      BreakBanner.vue
+      MilestoneHint.vue
+      ui/NumberInput.vue
+      ui/Toggle.vue
     App.vue
     main.ts
   ```

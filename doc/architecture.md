@@ -5,21 +5,38 @@
 ```
 ┌──────────────────────────────────────────────┐
 │  UI (Vue 3, vanilla TS, no SFC-only)          │
-│   - ClockInView    (big red button + adjust)  │
-│   - RunningView    (elapsed HH:MM, edit/reset,│
-│                     clock-out)                 │
-│   - BreakOverlay   (countdown, auto-resume)   │
+│   - ClockInView    (clock-in button + worked)  │
+│   - RunningView    (elapsed HH:MM, status,     │
+│                     clock-out, mandatory break) │
+│   - SettingsDialog (gear icon, break config)   │
+│   - StatsGrid / DailyTargetBar / Timeline      │
+│   - BreakBanner / MilestoneHint                │
+│   - ui/NumberInput / ui/Toggle                 │
 └───────────────┬──────────────────────────────┘
                 │  reads / writes
 ┌───────────────▼──────────────────────────────┐
 │  Pinia store (single source of truth)         │
-│   - today's entry (ordered segments)           │
-│   - selectors: workedMs, displayMs, breakState │
+│   - today's worktime (in/out punches)         │
+│   - settings (persistent key-value)           │
+│   - getters: workedMs, segments, breakMs,     │
+│     remainingMs, overtimeMs, workPercent,     │
+│     daySpanMs, nextMilestone                  │
+│   - recompute: derives segments (work/gap/    │
+│     break) from punches + settings, injects   │
+│     mandatory pauses                          │
 └───────────────┬──────────────────────────────┘
                 │  persists
 ┌───────────────▼──────────────────────────────┐
 │  Storage layer (idb wrapper on IndexedDB)     │
-│   - "entries" object store, key by date       │
+│   - "settings" object store (key 'settings')  │
+│   - "worktime" object store (key 'worktime')  │
+└───────────────────────────────────────────────┘
+                │  developer debug (always on)
+┌───────────────▼──────────────────────────────┐
+│  Debug API (window.__clocked)                 │
+│   - injectable clock (tickTo/tickForward)     │
+│   - setPunches, setSettings, simulateMidnight │
+│   - writes through to real IDB                │
 └───────────────────────────────────────────────┘
 ```
 
@@ -27,113 +44,116 @@ No router, no backend, no network calls at runtime. Single SPA bundle served fro
 
 ## Data model
 
-### Entry (one per local calendar day)
+### IndexedDB stores (DB `clocked`, version 2)
 
-A day is modeled as an **ordered list of segments**. Segments alternate between `work` and `break`; the currently-open segment has `end === undefined`.
+Two object stores, single out-of-line-key record each:
+
+#### `settings` (key `'settings'`, persistent, not reset at midnight)
 
 ```ts
-type Segment =
-  | { type: 'work';  start: number; end?: number }
-  | { type: 'break'; start: number; end?: number; duration: 30 | 15 }; // duration in minutes
+interface Settings {
+  daily_target: number        // 28800 (8 h) — reached indicator (no UI yet)
+  daily_limit: number         // 36000 (10 h) — hard stop (no UI yet)
+  break1_enabled: boolean     // true
+  break1_trigger: number      // 21600 (6 h)  — seconds of worked time
+  break1_duration: number     // 1800 (30 min)
+  break2_enabled: boolean     // true (only when break1_enabled is true)
+  break2_trigger: number      // 32400 (9 h)
+  break2_duration: number     // 900 (15 min)
+}
+const DEFAULT_SETTINGS: Settings = { /* values above */ }
+```
 
-interface Entry {
-  date: string;        // 'YYYY-MM-DD', local calendar day (primary key)
-  segments: Segment[]; // ordered; first is always 'work'
+**Invariant:** `break2_enabled` may only be `true` when `break1_enabled` is `true`. If `break1_enabled` is set to `false`, `break2_enabled` is cascade-disabled to `false`.
+
+#### `worktime` (key `'worktime'`, single day, reset after midnight)
+
+```ts
+interface Worktime {
+  date: string                         // 'YYYY-MM-DD', local day of the record
+  punches: Array<{ in: number; out?: number }>
 }
 ```
 
-Only **today's** entry is stored. Previous day's entry is deleted on rollover. No history is kept.
-
-### Why segments (not a single `startEpochMs`)
-
-- Multiple clock-out / clock-in cycles per day produce multiple work segments.
-- Mandatory breaks are forced pauses within the day, not just subtractions from a total — they are themselves segments so that the break overlay has a clear start/end to count down.
-- Accumulated worked time = sum of `work` segment durations; breaks never contribute to it by construction.
+- `date` is the local calendar day when the record was created (used for rollover detection).
+- `in` / `out` are **seconds since midnight** of that local day.
+- An open punch has `out === undefined` (the user is currently clocked in).
+- New punches are appended at the end.
+- On midnight rollover, the record is cleared (deleted).
 
 ### Day boundary
 
-- "Today" = local calendar day. Compare `entry.date` against the current local date string.
-- On app focus / visibility change / tick: if current local date != `entry.date`, delete the entry and reset to the clock-in view.
+- "Today" = local calendar day. Compare the persisted worktime date against the current local date.
+- On app focus / visibility change / tick: if the worktime record is from a previous day, clear it and reset to the clock-in view.
+
+### Why in/out punches (not segments)
+
+- Simpler mental model: the user clocks in and out; each pair is one session.
+- Breaks are **auto-derived** from gaps between punches and configurable threshold settings — they are not stored explicitly.
+- Worked time = Σ(out − in) for each closed punch, minus auto-derived break time.
+- The `Recomputed` type (returned by `recompute()`) includes a `segments: DerivedSegment[]` array for UI rendering (timeline strip, stats grid). Each segment is typed `'work'`, `'gap-break'`, or `'mandatory-break'` and carries a start/end seconds-since-midnight. Segments are not stored — they are derived on every read.
+
+## Break derivation algorithm
+
+Input: `punches` (in/out seconds-since-midnight) + `settings` + `nowSeconds` (seconds since midnight).
+
+1. Compute `workedGross = Σ(out_i − in_i)` over closed punches; an open punch counts `now − in`.
+2. Compute gaps = `in_{i+1} − out_i` between consecutive punches.
+3. **Gap classification (per-break, ordered):**
+   - Walk gaps chronologically.
+   - A gap satisfies **break1** iff `gap > break1_duration`. The first `break1_duration` of that gap counts as break1; the remainder is "clocked out" (neither work nor break).
+   - After break1 is satisfied (by gap or by an elapsed mandatory pause), a later gap satisfies **break2** iff `gap > break2_duration`. The first `break2_duration` of that gap counts as break2; remainder is "clocked out".
+   - A single very long gap (`> break1_duration + break2_duration`) satisfies both breaks in one pass.
+   - Short gaps (`<=` relevant break duration) do not satisfy any break; they remain `gap-break` segments but contribute 0 to `breakSeconds`.
+4. **Mandatory pause budget:** For each enabled break NOT satisfied by a gap, a mandatory pause of that break's full duration may be injected at its trigger point (subject to live/elapsed rule below).
+5. **Walk punches** accumulating `workedElapsed` (work seconds, excluding gaps and mandatory pauses).
+   - When `workedElapsed` crosses `break1_trigger` and break1 not gap-satisfied:
+     - Insert `mandatory-break` segment of `break1_duration` at the trigger second.
+     - If `nowSec < trigger + break1_duration` → **live**: `breakState='break1'`, `breakEndsAtMs` set, exit walk.
+     - Else (`nowSec >= trigger + break1_duration`) → **elapsed**: `breakState='running'`, continue walk so break2 can be evaluated.
+   - When `workedElapsed` crosses `break2_trigger` (after break1 done) and break2 not gap-satisfied:
+     - Same live/elapsed logic for break2.
+6. `breakSeconds = sum of consumed gap portions + sum of mandatory pause durations (live or elapsed)`.
+   `workedSeconds = max(0, workedGross − breakSeconds)`.
+7. `displaySeconds = workedSeconds` (breaks excluded).
+
+### State machine
+
+```
+running --worked>=break1_trigger--> break1 --duration elapsed--> running --worked>=break2_trigger--> break2 --duration elapsed--> running
+```
+
+Breaks fire exactly once each per day. After break2 is satisfied, no more breaks trigger.
 
 ## Runtime flow
 
 ### Clock in
-1. User taps the big red button (or uses a custom time via the OS time picker).
-2. Store appends a new `work` segment with `start = chosen time` (default `Date.now()`).
+1. User taps the rectangular acid-green Clock In button on `ClockInView`.
+2. Store appends a new punch `{ in: nowSeconds }` (wall clock).
 3. UI switches to `RunningView`.
 
 ### Clock out
-- Close the current open segment (set `end = Date.now()`).
-- UI switches back to `ClockInView` with a "clocked out" state and a clock-in button to resume.
-- The clocked-out view displays the accumulated worked time (label "Worked today") above the red button, plus a Reset day button.
+- Set the last punch's `out = nowSeconds` (open punch closed).
+- UI switches back to `ClockInView` with a "clocked out" label and a Clock In button to resume.
+- The clocked-out view displays accumulated worked time ("Worked today"), stats, daily-target bar, and timeline. No Reset-day button — use `window.__clocked.clear()` in the console for development.
 
 ### Tick
-- `setInterval` updates the displayed value every second while the document is visible.
-- On `visibilitychange` -> visible: recompute from the segments (do **not** rely on the tick having run while hidden — iOS pauses timers).
-- Internally all math is in ms; UI renders `Math.floor(ms / 60000)` minutes -> `HH:MM`.
+- `setInterval` updates the displayed value every 1 s while the document is visible.
+- All time values read from the **injectable clock** (`src/domain/clock.ts`, default `Date.now()`) to support the debug API's `tickTo`/`tickForward`.
+- On `visibilitychange` -> visible: recompute from punches (do **not** rely on the tick having run while hidden — iOS pauses timers).
+- All displays are HH:MM (ADR-006); the sole exception is the mandatory-break countdown banner which shows MM:SS.
 
-### Adjustment buttons (+1 / +5 / +10 min)
+### Mandatory breaks — inline banner
 
-- These add to **worked time** by moving the recorded start of the currently-open work segment **earlier** (to the left on the timeline).
-- Implementation: `openWorkSegment.start -= N * 60_000`.
-- No matching "−" buttons in scope.
+When the recompute algorithm introduces a mandatory pause:
+- `viewState.kind` becomes `'break'` (break1 or break2).
+- The break timer is derived from `breakEndsAt - now()` (epoch-ms diff).
+- The inline `BreakBanner` counts down MM:SS; when it reaches zero the state reverts to `running`.
+- Clock-out is **allowed** during a mandatory break; it closes the open punch, ends the day, and retains the derived break segment in the timeline. Once clocked out, `viewState` becomes `clocked-out` regardless of any lingering derived break state.
 
-### Custom time picker
+### Midnight rollover
 
-- Opens the OS time picker (`<input type="time">` on platforms that surface one).
-- The picked time is converted to an epoch-ms for today's local date and used as the start of the (currently-open or new) work segment.
-
-### Edit clock-in after the fact
-
-- User edits the start of the first work segment (or any work segment, depending on UI scope).
-- After any mutation to segment starts, the store **recomputes break eligibility from scratch** (see state machine below). Breaks may appear, disappear, or shift.
-
-### Mandatory breaks — state machine
-
-Worked time is **accumulated across all work segments** (excluding break segments). Thresholds:
-
-- After **6h** of accumulated worked time → fire 30 min break (once per day).
-- After **9h** of accumulated worked time → fire 15 min break (once per day).
-
-Conceptual state machine (driven by `workedMs`):
-
-```
-running --workedMs>=6h--> break30 --30min elapsed--> running --workedMs>=9h--> break15 --15min elapsed--> running
-```
-
-Recompute algorithm (run on every tick, on visibility regain, and after any segment mutation):
-
-1. Walk segments in order, accumulating `workedMs` over `work` segments and `breakMs` over `break` segments.
-2. When accumulated worked time crosses 6h and no 30 min break has been recorded yet:
-   - close the current work segment at the crossing instant,
-   - insert a `break` segment `{ duration: 30, start: crossingInstant }`.
-3. When accumulated worked time crosses 9h (after the 30 min break) and no 15 min break has been recorded yet:
-   - close the current work segment at the crossing instant,
-   - insert a `break` segment `{ duration: 15, start: crossingInstant }`.
-4. If a break segment is currently open (no `end`), check whether `now - break.start >= duration`:
-   - if yes: set `end = break.start + duration`, append a new `work` segment `{ start: break.end }`.
-   - if no: state is `break`, with `breakEndsAt = break.start + duration`.
-
-### Display
-
-```
-displayMs = workedMs   // breaks are excluded by construction (they are not 'work' segments)
-```
-
-The UI shows `formatHHMM(displayMs)` in `RunningView` (active timer) and also on the clocked-out view (static — no open segment, so the value is frozen).
-
-### Break overlay
-
-While the current segment is an open `break`:
-- Hide the elapsed-time display.
-- Show "Break — NN:NN remaining" counting down from `breakEndsAt - now`.
-- Auto-resume when the countdown reaches 0 (the recomputation in step 4 above closes the break and opens a new work segment).
-- Clock-out is **disabled** during a mandatory break — breaks cannot be skipped.
-
-### Reset / midnight rollover
-
-- Manual reset: delete today's entry, return to `ClockInView`.
-- Midnight rollover: detected on next tick / visibility; delete entry, return to `ClockInView`. Previous day is not carried over.
+- Detected on next tick / visibility change: if the worktime record `date` differs from the current local date, clear worktime and return to `ClockInView`. Previous day is not carried over.
 
 ## PWA wiring
 
@@ -144,6 +164,14 @@ While the current segment is an open `break`:
 
 ## Persistence
 
-- IndexedDB via `idb`, one object store `entries` keyed by `date`.
-- Only today's entry is kept; the schema is forward-compatible with history if that decision is ever revisited.
+- IndexedDB via `idb`, two object stores: `settings` (key `'settings'`) and `worktime` (key `'worktime'`).
+- On first boot (no settings record), write `DEFAULT_SETTINGS`.
+- Worktime is cleared on midnight rollover.
 - No localStorage for entry data (size + eviction risk); localStorage may be used only for ephemeral UI state if needed.
+
+## Developer debug API (always on)
+
+A global `window.__clocked` object provides getters and mutation methods that write through to real IndexedDB. See `doc/plan/08-restructure-storage.md` for the full API surface. Key features:
+- An injectable clock (`src/domain/clock.ts`) lets the debug API set a mock "now" via `tickTo(sec)` / `tickForward(sec)` without touching the real system clock.
+- `setPunches([{in, out?}])` overwrites today's punches for testing arbitrary scenarios.
+- `simulateMidnight()` forces a rollover check.

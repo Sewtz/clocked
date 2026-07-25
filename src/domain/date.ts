@@ -18,3 +18,8 @@ export function localEpochForTodayMs(
   d.setHours(hours, minutes, 0, 0)
   return d.getTime()
 }
+
+export function secondsSinceMidnight(epochMs: number): number {
+  const d = new Date(epochMs)
+  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
+}
