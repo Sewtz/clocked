@@ -66,7 +66,7 @@ const todayLabel = computed(() =>
       </div>
     </header>
 
-    <main class="flex-1 flex flex-col items-center justify-center px-6 py-12 gap-12">
+    <main class="flex-1 flex flex-col items-center justify-start px-6 pt-12 gap-12">
       <template v-if="store.loadStatus !== 'ready'">
         <div class="font-mono text-text-faint animate-pulse text-xl">Clocked</div>
       </template>
