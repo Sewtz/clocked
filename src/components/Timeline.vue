@@ -15,6 +15,24 @@ function fmtDur(sec: number): string {
   return formatHHMM(sec * 1000)
 }
 
+function segColor(type: string): string {
+  if (type === 'work') return 'var(--color-work)'
+  if (type === 'mandatory-break') return 'var(--color-break)'
+  return 'var(--color-gap)'
+}
+
+function segLabel(type: string): string {
+  if (type === 'work') return 'Work'
+  if (type === 'mandatory-break') return 'Brk'
+  return 'Gap'
+}
+
+function segOpacity(type: string): number {
+  if (type === 'work') return 0.9
+  if (type === 'mandatory-break') return 0.7
+  return 0.4
+}
+
 const span = computed(() => store.daySpanMs / 1000)
 const firstIn = computed(() => (store.worktime ? store.worktime.punches[0].in : 0))
 const nowFmt = computed(() => fmtTime(span.value + firstIn.value))
@@ -44,10 +62,10 @@ const trackSegs = computed(() =>
         :style="{
           left: seg.left + '%',
           width: seg.width + '%',
-          backgroundColor: seg.type === 'work' ? 'var(--color-work)' : 'var(--color-break)',
-          opacity: seg.type === 'work' ? 0.9 : 0.7,
+          backgroundColor: segColor(seg.type),
+          opacity: segOpacity(seg.type),
         }"
-        :title="`${seg.type === 'work' ? 'Work' : 'Break'}: ${fmtTime(seg.startSec)} – ${fmtTime(seg.endSec)}`"
+        :title="`${segLabel(seg.type)}: ${fmtTime(seg.startSec)} – ${fmtTime(seg.endSec)}`"
       />
     </div>
     <div class="mt-3 flex flex-col gap-px">
@@ -58,13 +76,13 @@ const trackSegs = computed(() =>
       >
         <span
           class="w-1.5 h-1.5 rounded-full flex-shrink-0"
-          :style="{ backgroundColor: seg.type === 'work' ? 'var(--color-work)' : 'var(--color-break)' }"
+          :style="{ backgroundColor: segColor(seg.type) }"
         />
         <span
           class="w-10 uppercase tracking-widest"
-          :style="{ color: seg.type === 'work' ? 'var(--color-work)' : 'var(--color-break)' }"
+          :style="{ color: segColor(seg.type) }"
         >
-          {{ seg.type === 'work' ? 'Work' : 'Brk' }}
+          {{ segLabel(seg.type) }}
         </span>
         <span v-if="seg.type === 'mandatory-break'" class="text-text-faint uppercase tracking-widest text-[10px]">auto</span>
         <span>{{ fmtTime(seg.startSec) }} → {{ fmtTime(seg.endSec) }}</span>

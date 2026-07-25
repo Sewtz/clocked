@@ -15,11 +15,11 @@ Given a list of in/out punches, settings, and a "now" value, returns `{ workedSe
 Cases:
 - Single punch, < break1_trigger: no break, worked = (now - in) clamped.
 - Single punch crossing break1_trigger: break state becomes `break1`, `breakEndsAt` computed from trigger instant + break1_duration.
-- During the break: state `break1`, `breakEndsAt` correct, worked seconds frozen at trigger point.
+- During the break: state `break1`, `breakEndsAt` correct, worked seconds frozen at trigger point; **breakSeconds counts up from 0 to break1_duration as the break elapses**.
 - After break1 duration: state `running` again, worked continues accumulating.
 - Same for break2 (only after break1 satisfied).
-- Gap between punches covers break duration: gap consumed, no mandatory pause introduced.
-- Multiple gaps sum ≥ sum of break durations: no mandatory pauses, all gaps counted as break time.
+- Gap between punches >= break duration: mandatory break fitted at gap start (becomes `mandatory-break` segment), gap remainder is neutral `gap` segment; no mandatory pause introduced during work.
+- Multiple gaps: breaks fitted at the start of qualifying gaps (`gap >= break_duration`); no mandatory pauses introduced during work. Gap remainders are neutral.
 - Insufficient gap + trigger crossing: mandatory pause introduced.
 - break1_disabled: break1 and break2 both skipped, no breaks regardless of worked time.
 - break2_enabled requires break1_enabled: defensive check skips break2 if break1 is disabled.

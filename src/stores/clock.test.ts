@@ -378,7 +378,7 @@ describe('redesign getters', () => {
     expect(store.nextMilestone).toBeNull()
   })
 
-  it('segments includes a gap-break when there are gaps between punches', async () => {
+  it('segments includes a gap when there are gaps between punches', async () => {
     const t = new Date('2026-07-21T08:00:00').getTime()
     setClock(() => t)
     const store = useClockStore()
@@ -390,6 +390,6 @@ describe('redesign getters', () => {
     setClock(() => t + 7200_000)
     await store.clockIn()
     store.now = t + 7200_000
-    expect(store.segments.some(s => s.type === 'gap-break')).toBe(true)
+    expect(store.segments.some(s => s.type === 'gap')).toBe(true)
   })
 })

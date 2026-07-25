@@ -114,26 +114,27 @@ is internal to recompute; the timeline shows reality (the whole gap as one
   4. **Walk punches** accumulating `workedElapsed` (seconds of work, excluding
      gaps and excluding any already-injected mandatory pauses).
 
-  5. **break1 evaluation** (only if break1 enabled and NOT gap-satisfied):
-     - When `workedElapsed` crosses `b1Trigger` at `triggerSec = p.in + consumed`:
-       - Compute `break1End = triggerSec + break1Dur`.
-       - If `nowSec < break1End` → **live mandatory break**: set
-         `breakState='break1'`, `breakEndsAtMs = epochMsForSeconds(triggerSec) + break1Dur*1000`,
-         call `insertMandatoryBreak(segments, triggerSec, break1Dur, 0)`,
-         deduct `break1Dur` from worked time (add to `mandatoryBreakSeconds`),
-         mark `break1Done = true`, and `break` out of the loop (user is on
-         break right now).
-       - If `nowSec >= break1End` → **elapsed mandatory break**: call
-         `insertMandatoryBreak(segments, triggerSec, break1Dur, 0)` (historical
-         segment), deduct `break1Dur` from worked time, mark `break1Done = true`,
-         do **not** set `breakEndsAtMs`/`breakState`, and **continue the walk**
-         so break2 can be evaluated. (This is the defect-1 fix.)
+5. **break1 evaluation** (only if break1 enabled and NOT gap-satisfied):
+      - When `workedElapsed` crosses `b1Trigger` at `triggerSec = p.in + consumed`:
+        - Compute `break1End = triggerSec + break1Dur`.
+        - If `nowSec < break1End` → **live mandatory break**: set
+          `breakState='break1'`, `breakEndsAtMs = epochMsForSeconds(triggerSec) + break1Dur*1000`,
+          call `insertMandatoryBreak(segments, triggerSec, break1Dur, 0)`,
+          deduct **elapsed break time** `nowSec - triggerSec` from worked time (add to `mandatoryBreakSeconds`),
+          mark `break1Done = true`, and `break` out of the loop (user is on
+          break right now).
+        - If `nowSec >= break1End` → **elapsed mandatory break**: call
+          `insertMandatoryBreak(segments, triggerSec, break1Dur, 0)` (historical
+          segment), deduct **full** `break1Dur` from worked time, mark `break1Done = true`,
+          do **not** set `breakEndsAtMs`/`breakState`, and **continue the walk**
+          so break2 can be evaluated. (This is the defect-1 fix.)
 
-  6. **break2 evaluation** (only if break2 enabled, break1 done — either gap-
-     satisfied or elapsed — and break2 NOT gap-satisfied):
-     - Same live/elapsed logic at `b2Trigger` with `break2Dur` and
-       `breakIndex: 1`. (This is the defect-2 fix — break2 is now reachable
-       because break1's elapsed path does not exit the loop.)
+6. **break2 evaluation** (only if break2 enabled, break1 done — either gap-
+      satisfied or elapsed — and break2 NOT gap-satisfied):
+      - Same live/elapsed logic at `b2Trigger` with `break2Dur` and
+        `breakIndex: 1`. Live break deducts elapsed (`nowSec - triggerSec`);
+        elapsed break deducts full `break2Dur`. (This is the defect-2 fix — break2
+        is now reachable because break1's elapsed path does not exit the loop.)
 
   7. **Aggregation.**
      `breakSeconds = gapBreakSeconds + mandatoryBreakSeconds`
@@ -197,7 +198,8 @@ is internal to recompute; the timeline shows reality (the whole gap as one
           const triggerSec = p.in + consumed
           const breakEnd = triggerSec + break1Dur
           insertMandatoryBreak(segments, triggerSec, break1Dur, 0)
-          mandatoryBreakSeconds += break1Dur
+          const elapsedBreak = nowSec < breakEnd ? nowSec - triggerSec : break1Dur
+          mandatoryBreakSeconds += elapsedBreak
           break1Done = true
           if (nowSec < breakEnd) {
             breakEndsAtMs = epochMsForSeconds(triggerSec) + break1Dur * 1000
@@ -215,7 +217,8 @@ is internal to recompute; the timeline shows reality (the whole gap as one
           const triggerSec = p.in + consumed
           const breakEnd2 = triggerSec + break2Dur
           insertMandatoryBreak(segments, triggerSec, break2Dur, 1)
-          mandatoryBreakSeconds += break2Dur
+          const elapsedBreak2 = nowSec < breakEnd2 ? nowSec - triggerSec : break2Dur
+          mandatoryBreakSeconds += elapsedBreak2
           break2Done = true
           if (nowSec < breakEnd2) {
             breakEndsAtMs = epochMsForSeconds(triggerSec) + break2Dur * 1000
@@ -254,6 +257,11 @@ is internal to recompute; the timeline shows reality (the whole gap as one
     (verified by recompute with the same punches on two calls — there is no
     state to carry, so this is automatic).
   - `workedGross` and `segments` shape unchanged for the no-break case.
+  - **During a live mandatory break: `workedSeconds` is frozen at the trigger
+    value and `breakSeconds` counts up from 0 to the break duration. After the
+    break elapses, `breakSeconds` equals the full duration and `workedSeconds`
+    resumes incrementing.** (Supersedes FX1 step 5/6 which prescribed
+    deducting the full duration immediately.)
 - **V&V:** `pnpm test -- src/domain/recompute.test.ts` (after T4).
 - **Pitfalls:**
   - Do **not** carry state across recompute calls. Each call is pure and
@@ -462,6 +470,45 @@ is internal to recompute; the timeline shows reality (the whole gap as one
       // the remaining 1800s of the gap is "clocked out"
     })
     ```
+  - **Add** worked-freeze / break-counts-up test for live break:
+    ```
+    it('workedSeconds frozen at trigger and breakSeconds counts up during live break1', () => {
+      // now = 21600 (exactly at trigger)
+      let r = recompute([{ in: 0 }], S, 21600)
+      expect(r.breakState).toBe('break1')
+      expect(r.breakSeconds).toBe(0)
+      expect(r.workedSeconds).toBe(21600)
+
+      // now = 22000 (400s into break)
+      r = recompute([{ in: 0 }], S, 22000)
+      expect(r.breakState).toBe('break1')
+      expect(r.breakSeconds).toBe(400)
+      expect(r.workedSeconds).toBe(21600)
+
+      // now = 23399 (1s before break end)
+      r = recompute([{ in: 0 }], S, 23399)
+      expect(r.breakState).toBe('break1')
+      expect(r.breakSeconds).toBe(1799)
+      expect(r.workedSeconds).toBe(21600)
+
+      // now = 23400 (exactly at break end -> elapsed)
+      r = recompute([{ in: 0 }], S, 23400)
+      expect(r.breakState).toBe('running')
+      expect(r.breakSeconds).toBe(1800)
+      expect(r.workedSeconds).toBe(21600)
+
+      // now = 25200 (after break, work resumes)
+      r = recompute([{ in: 0 }], S, 25200)
+      expect(r.breakState).toBe('running')
+      expect(r.breakSeconds).toBe(1800)
+      expect(r.workedSeconds).toBe(23400)
+    })
+    ```
+  - **Update** existing live-break tests:
+    - "single punch crossing break1_trigger fires mandatory break1" (now=21601):
+      `workedSeconds === 21600`, `breakSeconds === 1` (was 19801/1800).
+    - "break2 fires after break1 has elapsed (live break2)" (now=61500):
+      `workedSeconds === 30600`, `breakSeconds === 2100` (was 30000/2700).
   - **Keep** the existing passing tests that do not encode the old aggregate
     rule (single closed punch, single open punch, two punches with small gap
     no trigger, targetReached, limitReached, segments sorted, negative gap).

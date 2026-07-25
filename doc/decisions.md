@@ -150,6 +150,18 @@ ADR-style log. Each entry: context → decision → consequences. Append new dec
 - **Decision:** introduce a single `now()` function in `src/domain/clock.ts` backed by an injectable `ClockFn`. Default returns `Date.now()`. `setClock(fn | null)` swaps it. The store and all downstream functions call `clock.now()` instead of `Date.now()`.
 - **Consequences:** production behavior is unchanged (default fn). Tests inject a deterministic clock. The debug API's `tickTo`/`tickForward`/`useRealClock` operate through `setClock`.
 
+## ADR-024 — Worked time freezes during a live mandatory break; breakSeconds counts up
+
+- **Context:** the original FX1 fix (doc/fix/01-break-derivation-fixes.md step 5/6) prescribed deducting the full break duration from worked time the instant a mandatory break triggers (live or elapsed). This caused `workedSeconds` to jump down by 30 min at break start and tick back up during the break — the opposite of the intended "work time freezes during break" behavior documented in `test-vnv-strategy.md:18`.
+- **Decision:** during a live mandatory break (`nowSec < trigger + duration`), `mandatoryBreakSeconds` adds only the elapsed break time `nowSec - trigger` (capped at the break duration). Once the break elapses (`nowSec >= trigger + duration`), the full duration is deducted. `workedSeconds = workedGross - breakSeconds` thus freezes at the trigger value while the break is live, and `breakSeconds` counts up from 0 to the break duration.
+- **Consequences:** the big elapsed display (`workedSeconds`) pauses at the trigger (e.g. 6h) for the 30 min break, then resumes. The "Breaks" stat (`breakSeconds`) shows 0 → 30 min during the live break. The `mandatory-break` segment in the timeline still spans the full future `trigger + duration` so the banner countdown is correct. Supersedes the live-break deduction in FX1 (ADR-022/FX1 step 5/6).
+
+## ADR-024b — Break2 fires at correct time (consumed includes break duration in elapsed path)
+
+- **Context:** in the elapsed mandatory break path, `consumed` only included the time to reach the trigger, not the break duration itself. This made `remainingDur = dur - consumed` count the break time as work time, and `workedElapsed += dur - consumed` accumulated wall-clock instead of worked time. As a result, break2 fired 30 min early (at 9h wall clock = 8h30m worked instead of 9h wall clock = 9h worked).
+- **Decision:** in the elapsed path for both break1 and break2, add the break duration to `consumed` after inserting the mandatory break. This excludes the break duration from `remainingDur` (used for the next break's trigger check) and from the `workedElapsed` accumulation.
+- **Consequences:** break2 now fires at the correct worked time (9h = 9h30m wall clock after a 30min break). The fix applies to any future break (break3, etc.) by the same pattern.
+
 ## ADR-025 — Always-on developer debug API (`window.__clocked`)
 
 - **Context:** the user requested a way to test times as a developer in the browser console without modifying app code. The debug API needs to be available unconditionally (chosen over DEV-only gating).
@@ -166,7 +178,7 @@ ADR-style log. Each entry: context → decision → consequences. Append new dec
 
 All questions in `discussion.md` have been answered. New decisions will be appended here as they arise during implementation.
 
-## ADR-027 — Per-gap break classification
+## ADR-027 — Per-gap break classification (superseded by ADR-028)
 
 - **Context:** the original aggregate gap rule (ADR-022) summed all gaps and compared against the total required break time. This allowed many small gaps (e.g. bathroom breaks) to satisfy mandatory break requirements, which doesn't match labor-rule intent.
 - **Decision:** a gap counts as a break only if it is strictly longer than that break's own duration. 
@@ -176,3 +188,15 @@ All questions in `discussion.md` have been answered. New decisions will be appen
   - Only the consumed break durations count toward `breakSeconds`; the remainder of a satisfying gap is "clocked out" time (neither work nor break).
   - If no qualifying gap exists by the time worked time crosses a break's trigger, a mandatory pause of that break's full duration is injected at the trigger point. The pause is "live" while `nowSec < trigger + duration` (banner shows countdown), then "elapsed" thereafter (historical segment, state reverts to `running`, walk continues for next break).
 - **Consequences:** short gaps no longer cover mandatory breaks; the timeline still shows them as `gap-break` segments. The mandatory-break expiry (Bug A) and break2 reachability (Bug B) fall out naturally from the per-break walk. Clock-out during a live break (Bug C) is now permitted and ends the day cleanly.
+
+## ADR-028 — Gaps are neutral; mandatory breaks fitted at gap start
+
+- **Context:** the per-gap break classification (ADR-027) still treated qualifying gaps as `gap-break` segments and counted them toward `breakSeconds`. The user clarified that gaps should be **neutral** — neither work nor break — except when a mandatory break is fitted into a gap. When a gap is long enough to contain a mandatory break (`gap >= break_duration`), the break is placed at the **beginning** of the gap as a `mandatory-break` segment, and the gap remainder becomes a neutral `gap` segment. The break order is maintained (break1 before break2, both can be fitted into the same gap if long enough). If a gap does not fit a break, the entire gap is neutral and the mandatory pause is injected at the trigger during work.
+- **Decision:**
+  1. Replace `gap-break` segment type with `gap` (neutral).
+  2. When a gap satisfies a break (`gap >= break_duration`), create a `mandatory-break` segment at the gap start (counts toward `breakSeconds` via `mandatoryBreakSeconds`), then a `gap` segment for the remainder.
+  3. If a gap satisfies both breaks, create `mandatory-break` (break1) followed by `mandatory-break` (break2) at the start of the gap, then `gap` for the remainder.
+  4. Change gap-satisfies condition from `>` to `>=` ("can fit" means at least as long).
+  5. `gapBreakSeconds` is removed; `breakSeconds = mandatoryBreakSeconds` only.
+  6. Timeline renders `gap` with neutral color/label ("Gap"), `mandatory-break` as "Brk" + "auto" tag with break color, `work` as before.
+- **Consequences:** the "Breaks" stat now shows only mandatory break time. Gaps are visually neutral in the timeline. The mandatory-break logic is unchanged (breaks still fire at triggers when no fitting gap exists). ADR-027's gap-counting portion is superseded; the per-gap walk and break order remain.

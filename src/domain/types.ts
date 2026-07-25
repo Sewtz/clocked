@@ -27,7 +27,7 @@ export interface Worktime {
 
 export type BreakState = 'running' | 'break1' | 'break2'
 
-export type DerivedSegmentType = 'work' | 'gap-break' | 'mandatory-break'
+export type DerivedSegmentType = 'work' | 'gap' | 'mandatory-break'
 
 export interface DerivedSegment {
   type: DerivedSegmentType
