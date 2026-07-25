@@ -166,6 +166,17 @@ export const useClockStore = defineStore('clock', {
       await this.persistAndRecompute()
     },
 
+    async replacePunches(punches: Array<{ in: number; out?: number }>) {
+      if (!this.worktime) return
+      this.worktime.punches = punches.map(p => ({
+        in: Math.max(0, Math.min(86399, Math.round(p.in))),
+        ...(p.out === undefined ? {} : { out: Math.max(0, Math.min(86399, Math.round(p.out))) }),
+      }))
+      const last = punches[punches.length - 1]
+      this._isClockedIn = !!(last && last.out === undefined)
+      await this.persistAndRecompute()
+    },
+
     async setSettings(patch: Partial<Settings>) {
       if (!this.settings) return
       this.settings = applySettingsPatch(this.settings, patch)
