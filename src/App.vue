@@ -75,5 +75,9 @@ const todayLabel = computed(() =>
         <RunningView v-else-if="view.kind === 'running' || view.kind === 'break'" />
       </template>
     </main>
+
+    <footer class="px-6 py-4 text-center font-mono text-xs text-text-faint">
+      Made by Marco 🚀🌕.
+    </footer>
   </div>
 </template>
