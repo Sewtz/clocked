@@ -663,7 +663,7 @@ export default function App() {
                     style={{ backgroundColor: s.type === 'work' ? '#b8ff57' : '#ffa94d' }}
                   />
                   <span className="w-10 uppercase tracking-widest" style={{ color: s.type === 'work' ? '#b8ff57' : '#ffa94d' }}>
-                    {s.type === 'work' ? 'Work' : 'Brk'}
+                    {s.type === 'work' ? 'Work' : 'Break'}
                   </span>
                   {s.autoBreakDuration && (
                     <span className="text-[#333] uppercase tracking-widest text-[10px]">auto</span>

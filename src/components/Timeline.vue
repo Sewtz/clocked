@@ -25,7 +25,7 @@ function segColor(type: string): string {
 
 function segLabel(type: string): string {
   if (type === 'work') return 'Work'
-  if (type === 'mandatory-break') return 'Brk'
+  if (type === 'mandatory-break') return 'Break'
   return 'Gap'
 }
 
