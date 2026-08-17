@@ -9,11 +9,13 @@
 │   - RunningView    (elapsed HH:MM, status,     │
 │                     clock-out, mandatory break) │
 │   - SettingsDialog (gear icon, break config)   │
+│   - CalendarDialog (calendar icon, 4-week grid, │
+│     day event list)                            │
 │   - EditTimesDialog (click Timeline, edit any  │
 │     in/out via OS time picker)                 │
 │   - StatsGrid / DailyTargetBar / Timeline      │
 │   - BreakBanner / MilestoneHint                │
-│   - ui/NumberInput / ui/Toggle                 │
+│   - ui/NumberInput / ui/Toggle / ui/useScrollLock │
 └───────────────┬──────────────────────────────┘
                 │  reads / writes
 ┌───────────────▼──────────────────────────────┐
@@ -32,6 +34,7 @@
 │  Storage layer (idb wrapper on IndexedDB)     │
 │   - "settings" object store (key 'settings')  │
 │   - "worktime" object store (key 'worktime')  │
+│   - "history" object store (key 'YYYY-MM-DD') │
 └───────────────────────────────────────────────┘
                 │  developer debug (always on)
 ┌───────────────▼──────────────────────────────┐
@@ -46,9 +49,9 @@ No router, no backend, no network calls at runtime. Single SPA bundle served fro
 
 ## Data model
 
-### IndexedDB stores (DB `clocked`, version 2)
+### IndexedDB stores (DB `clocked`, version 3)
 
-Two object stores, single out-of-line-key record each:
+Three object stores: `settings` (single persistent record), `worktime` (single day record), `history` (archived days).
 
 #### `settings` (key `'settings'`, persistent, not reset at midnight)
 
@@ -81,7 +84,20 @@ interface Worktime {
 - `in` / `out` are **seconds since midnight** of that local day.
 - An open punch has `out === undefined` (the user is currently clocked in).
 - New punches are appended at the end.
-- On midnight rollover, the record is cleared (deleted).
+- On midnight rollover, the record is archived to the `history` store (see below) and cleared.
+
+#### `history` (key `'YYYY-MM-DD'`, persistent, archived at rollover)
+
+```ts
+interface HistoryRecord extends Worktime {
+  date: string                         // 'YYYY-MM-DD' — same shape as worktime
+  punches: Array<{ in: number; out?: number }>
+}
+```
+
+- Values are raw `Worktime` records (date + punches) — **no aggregates**; recompute is at view time with current settings, so settings changes retroactively affect how historic days are displayed.
+- On midnight rollover, `reset()` archives today's worktime: any open punch is first closed at `out = 86399` (23:59:59), then the record is written keyed by its `date`. The live `worktime` record is then cleared.
+- Today's live worktime is overlaid onto the history cache at view time so the calendar shows today's dot and live segments.
 
 ### Day boundary
 
@@ -155,7 +171,14 @@ When the recompute algorithm introduces a mandatory pause:
 
 ### Midnight rollover
 
-- Detected on next tick / visibility change: if the worktime record `date` differs from the current local date, clear worktime and return to `ClockInView`. Previous day is not carried over.
+- Detected on next tick / visibility change: if the worktime record `date` differs from the current local date, archive the previous day to the `history` store (open punch closed at 23:59:59) and clear worktime, returning to `ClockInView`.
+
+### Calendar dialog
+
+- A calendar icon in the top bar (between the date label and the gear) opens `CalendarDialog`, a modal styled identically to `SettingsDialog`.
+- `CalendarGrid` renders the last 4 calendar weeks (Mon–Sun, 28 cells); a green dot marks any day with punch data; today is outlined; the selected day is highlighted.
+- Clicking a day renders `DayEventList` below the grid: the full `recompute()` segments (work / gap / mandatory-break) with `HH:MM` start/end, durations, and daily totals. Historic days pass `nowSec = 86399`; today passes the live seconds-since-midnight so an open punch updates live.
+- The dialog body scrolls internally (`max-h-[85dvh]`); the app behind is scroll-locked via the `useScrollLock` composable (applied to Settings, EditTimes, and Calendar dialogs).
 
 ## PWA wiring
 
@@ -166,9 +189,9 @@ When the recompute algorithm introduces a mandatory pause:
 
 ## Persistence
 
-- IndexedDB via `idb`, two object stores: `settings` (key `'settings'`) and `worktime` (key `'worktime'`).
+- IndexedDB via `idb`, three object stores: `settings` (key `'settings'`), `worktime` (key `'worktime'`), `history` (key `'YYYY-MM-DD'`).
 - On first boot (no settings record), write `DEFAULT_SETTINGS`.
-- Worktime is cleared on midnight rollover.
+- Worktime is archived to `history` and cleared on midnight rollover.
 - No localStorage for entry data (size + eviction risk); localStorage may be used only for ephemeral UI state if needed.
 
 ## Developer debug API (always on)
@@ -177,3 +200,4 @@ A global `window.__clocked` object provides getters and mutation methods that wr
 - An injectable clock (`src/domain/clock.ts`) lets the debug API set a mock "now" via `tickTo(sec)` / `tickForward(sec)` without touching the real system clock.
 - `setPunches([{in, out?}])` overwrites today's punches for testing arbitrary scenarios.
 - `simulateMidnight()` forces a rollover check.
+- `getHistory()` returns all archived records; `clearHistory()` wipes the history store.

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useClockStore } from '@/stores/clock'
 import { clearWorktime, getWorktime } from '@/storage/worktime'
+import { clearHistory, getAllHistory } from '@/storage/history'
 import { getSettings } from '@/storage/settings'
 import { installDebugApi } from './api'
 import { setClock } from '@/domain/clock'
@@ -15,6 +16,7 @@ vi.mock('@/storage/persist', () => ({
 beforeEach(async () => {
   setActivePinia(createPinia())
   await clearWorktime()
+  await clearHistory()
   setClock(() => 0)
   const store = useClockStore()
   store.settings = { ...DEFAULT_SETTINGS }
@@ -56,6 +58,41 @@ describe('debug API', () => {
     expect(window.__clocked.worktime).not.toBeNull()
     await window.__clocked.clear()
     expect(window.__clocked.worktime).toBeNull()
+  })
+
+  it('getHistory returns empty array on empty DB', async () => {
+    expect(await window.__clocked.getHistory()).toEqual([])
+  })
+
+  it('simulateMidnight archives the previous day', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    await window.__clocked.setPunches([{ in: 28800, out: 32400 }])
+    await window.__clocked.simulateMidnight()
+    const history = await window.__clocked.getHistory()
+    expect(history).toHaveLength(1)
+    expect(history[0].date).toBe('2026-07-21')
+    expect(history[0].punches).toEqual([{ in: 28800, out: 32400 }])
+  })
+
+  it('archives an open punch closed at 86399 on clear', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    await window.__clocked.setPunches([{ in: 28800 }])
+    await window.__clocked.clear()
+    const history = await getAllHistory()
+    expect(history).toHaveLength(1)
+    expect(history[0].punches).toEqual([{ in: 28800, out: 86399 }])
+  })
+
+  it('clearHistory wipes the store', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    await window.__clocked.setPunches([{ in: 28800, out: 32400 }])
+    await window.__clocked.simulateMidnight()
+    expect(await window.__clocked.getHistory()).toHaveLength(1)
+    await window.__clocked.clearHistory()
+    expect(await window.__clocked.getHistory()).toEqual([])
   })
 
   it('help does not throw', () => {

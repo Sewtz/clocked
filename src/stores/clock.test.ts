@@ -3,6 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useClockStore, stopTick } from './clock'
 import { getSettings, putSettings } from '@/storage/settings'
 import { getWorktime, putWorktime, clearWorktime } from '@/storage/worktime'
+import { getHistoryDay, clearHistory } from '@/storage/history'
 import { setClock } from '@/domain/clock'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import { secondsSinceMidnight } from '@/domain/date'
@@ -15,6 +16,7 @@ vi.mock('@/storage/persist', () => ({
 beforeEach(async () => {
   setActivePinia(createPinia())
   await clearWorktime()
+  await clearHistory()
   stopTick()
   setClock(() => 0)
 })
@@ -199,6 +201,127 @@ describe('checkRollover', () => {
     const store = useClockStore()
     await store.checkRollover()
     expect(store.worktime).toBeNull()
+  })
+})
+
+describe('history archive', () => {
+  it('archives the expired worktime before clearing', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    setClock(() => t + 7200_000)
+    await store.clockOut()
+    store.worktime!.date = '2026-07-20'
+    await store.checkRollover()
+    expect(store.worktime).toBeNull()
+    const archived = await getHistoryDay('2026-07-20')
+    expect(archived).not.toBeNull()
+    expect(archived!.date).toBe('2026-07-20')
+    expect(archived!.punches).toEqual([{ in: 28800, out: 36000 }])
+  })
+
+  it('closes an open punch at 86399 when archiving on rollover', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    store.worktime!.date = '2026-07-20'
+    await store.checkRollover()
+    const archived = await getHistoryDay('2026-07-20')
+    expect(archived!.punches).toEqual([{ in: 28800, out: 86399 }])
+  })
+
+  it('does not archive when worktime has no punches', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-20', punches: [] }
+    await store.checkRollover()
+    expect(await getHistoryDay('2026-07-20')).toBeNull()
+  })
+
+  it('archives consecutive days correctly', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    setClock(() => t + 3600_000)
+    await store.clockOut()
+    store.worktime!.date = '2026-07-20'
+    await store.checkRollover()
+    expect((await getHistoryDay('2026-07-20'))!.punches).toEqual([{ in: 28800, out: 32400 }])
+    const t2 = new Date('2026-07-22T08:00:00').getTime()
+    setClock(() => t2)
+    await store.clockIn()
+    setClock(() => t2 + 3600_000)
+    await store.clockOut()
+    store.worktime!.date = '2026-07-21'
+    await store.checkRollover()
+    expect((await getHistoryDay('2026-07-21'))!.punches).toEqual([{ in: 28800, out: 32400 }])
+  })
+})
+
+describe('loadHistoryRange', () => {
+  it('populates historyCache from storage within the range', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-20', punches: [{ in: 28800, out: 32400 }] }
+    await store.checkRollover()
+    store.worktime = null
+    await store.loadHistoryRange(new Date(2026, 6, 13), new Date(2026, 6, 26))
+    expect(store.historyCache).not.toBeNull()
+    expect(store.historyCache!['2026-07-20'].punches).toEqual([{ in: 28800, out: 32400 }])
+  })
+
+  it('merges today into the cache', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.clockIn()
+    await store.loadHistoryRange(new Date(2026, 6, 13), new Date(2026, 6, 26))
+    expect(store.historyCache!['2026-07-21']).toStrictEqual(store.worktime)
+  })
+
+  it('does not add today when worktime has no punches', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.loadHistoryRange(new Date(2026, 6, 13), new Date(2026, 6, 26))
+    expect(store.historyCache!['2026-07-21']).toBeUndefined()
+  })
+
+  it('does not add today when worktime is null', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.loadHistoryRange(new Date(2026, 6, 13), new Date(2026, 6, 26))
+    expect(store.historyCache).toEqual({})
+  })
+})
+
+describe('clearHistory action', () => {
+  it('wipes the history store and empties the cache', async () => {
+    const t = new Date('2026-07-21T08:00:00').getTime()
+    setClock(() => t)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-20', punches: [{ in: 28800, out: 32400 }] }
+    await store.checkRollover()
+    await store.loadHistoryRange(new Date(2026, 6, 13), new Date(2026, 6, 26))
+    expect(await getHistoryDay('2026-07-20')).not.toBeNull()
+    await store.clearHistory()
+    expect(await getHistoryDay('2026-07-20')).toBeNull()
+    expect(store.historyCache).toEqual({})
   })
 })
 

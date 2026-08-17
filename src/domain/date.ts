@@ -23,3 +23,37 @@ export function secondsSinceMidnight(epochMs: number): number {
   const d = new Date(epochMs)
   return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
 }
+
+export function mondayBasedWeekday(d: Date): number {
+  const js = d.getDay()
+  return (js + 6) % 7
+}
+
+export function startOfWeekMonday(d: Date): Date {
+  const out = new Date(d)
+  out.setHours(0, 0, 0, 0)
+  out.setDate(out.getDate() - mondayBasedWeekday(d))
+  return out
+}
+
+export function lastFourWeeksRange(today: Date): { start: Date; end: Date } {
+  const thisMonday = startOfWeekMonday(today)
+  const start = new Date(thisMonday)
+  start.setDate(start.getDate() - 21)
+  const end = new Date(thisMonday)
+  end.setDate(end.getDate() + 6)
+  return { start, end }
+}
+
+export function addDays(d: Date, days: number): Date {
+  const out = new Date(d)
+  out.setDate(out.getDate() + days)
+  return out
+}
+
+export function ymd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}

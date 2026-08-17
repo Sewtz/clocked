@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, ref, onBeforeUnmount } from 'vue'
 import { useClockStore } from '@/stores/clock'
+import { useScrollLock } from '@/components/ui/useScrollLock'
 import NumberInput from '@/components/ui/NumberInput.vue'
 import Toggle from '@/components/ui/Toggle.vue'
 
 const emit = defineEmits<{ close: [] }>()
 const store = useClockStore()
+useScrollLock()
+
+const confirmDelete = ref(false)
+onBeforeUnmount(() => {
+  confirmDelete.value = false
+})
 
 interface Draft {
   targetHours: number
@@ -44,6 +51,15 @@ async function save() {
     break2_duration: draft.break2DurationMinutes * 60,
   })
   emit('close')
+}
+
+async function onDeleteHistory() {
+  if (!confirmDelete.value) {
+    confirmDelete.value = true
+    return
+  }
+  await store.clearHistory()
+  confirmDelete.value = false
 }
 </script>
 
@@ -125,6 +141,11 @@ async function save() {
       </div>
 
       <div class="flex justify-end gap-3 px-6 py-4 border-t border-border">
+        <button
+          type="button"
+          class="font-mono text-xs tracking-widest uppercase px-5 py-2 border border-border-2 text-text-faint hover:text-overtime hover:border-overtime transition-colors"
+          @click="onDeleteHistory"
+        >{{ confirmDelete ? 'Click again to confirm' : 'Delete historic data' }}</button>
         <button
           type="button"
           class="font-mono text-xs tracking-widest uppercase px-5 py-2 border border-border-2 text-text-faint hover:text-text hover:border-text-faint transition-colors"

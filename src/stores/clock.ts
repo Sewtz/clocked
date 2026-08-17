@@ -5,8 +5,10 @@ import { recompute } from '@/domain/recompute'
 import { applySettingsPatch } from '@/domain/settings'
 import { getSettings, putSettings } from '@/storage/settings'
 import { getWorktime, putWorktime, clearWorktime } from '@/storage/worktime'
+import { putHistoryDay, getHistoryRange, clearHistory } from '@/storage/history'
 import { requestPersistence } from '@/storage/persist'
 import { adjustStart, setFirstPunchIn } from '@/domain/adjust'
+import { ymd } from '@/domain/date'
 import type { Settings, Worktime, ViewState, BreakState, Recomputed, DerivedSegment } from '@/domain/types'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 
@@ -36,6 +38,7 @@ export const useClockStore = defineStore('clock', {
     worktime: null as Worktime | null,
     now: 0,
     _isClockedIn: false,
+    historyCache: null as Record<string, Worktime> | null,
   }),
 
   getters: {
@@ -198,9 +201,30 @@ export const useClockStore = defineStore('clock', {
     },
 
     async reset() {
+      if (this.worktime && this.worktime.punches.length > 0) {
+        const archived = JSON.parse(JSON.stringify(this.worktime)) as Worktime
+        const last = archived.punches[archived.punches.length - 1]
+        if (last && last.out === undefined) {
+          last.out = 86399
+        }
+        await putHistoryDay(archived)
+      }
       await clearWorktime()
       this.worktime = null
       this._isClockedIn = false
+    },
+
+    async loadHistoryRange(start: Date, end: Date): Promise<void> {
+      const range = await getHistoryRange(ymd(start), ymd(end))
+      if (this.worktime && this.worktime.punches.length > 0) {
+        range[this.worktime.date] = this.worktime
+      }
+      this.historyCache = range
+    },
+
+    async clearHistory(): Promise<void> {
+      await clearHistory()
+      this.historyCache = {}
     },
 
     async onVisible() {

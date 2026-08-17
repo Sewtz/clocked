@@ -1,5 +1,6 @@
 import { now, setClock } from '@/domain/clock'
 import { todayString, secondsSinceMidnight } from '@/domain/date'
+import { getAllHistory } from '@/storage/history'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import type { Settings } from '@/domain/types'
 import type { useClockStore } from '@/stores/clock'
@@ -16,7 +17,9 @@ export function installDebugApi(store: ReturnType<typeof useClockStore>) {
         { method: 'punchIn(sec?)', returns: 'clock in (default now, or specific sec-since-midnight)' },
         { method: 'punchOut()', returns: 'clock out' },
         { method: 'setPunches(punches)', returns: 'overwrite today\'s punches' },
-        { method: 'clear()', returns: 'clear today\'s worktime' },
+        { method: 'clear()', returns: 'clear today\'s worktime (archives to history)' },
+        { method: 'getHistory()', returns: 'array of all archived Worktime records (date + punches)' },
+        { method: 'clearHistory()', returns: 'wipe the entire history store' },
         { method: 'tickTo(sec)', returns: 'set mock clock to sec-since-midnight' },
         { method: 'tickForward(sec)', returns: 'advance mock clock by sec' },
         { method: 'useRealClock()', returns: 'restore Date.now()' },
@@ -68,6 +71,14 @@ export function installDebugApi(store: ReturnType<typeof useClockStore>) {
 
     clear: async () => {
       await store.reset()
+    },
+
+    getHistory: async () => {
+      return await getAllHistory()
+    },
+
+    clearHistory: async () => {
+      await store.clearHistory()
     },
 
     tickTo: (sec: number) => {

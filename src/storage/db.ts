@@ -1,9 +1,10 @@
 import { openDB, type IDBPDatabase } from 'idb'
 
 const DB_NAME = 'clocked'
-const DB_VERSION = 2
+const DB_VERSION = 3
 export const STORE_SETTINGS = 'settings'
 export const STORE_WORKTIME = 'worktime'
+export const STORE_HISTORY = 'history'
 
 let dbPromise: Promise<IDBPDatabase> | null = null
 
@@ -20,6 +21,11 @@ export function getDb(): Promise<IDBPDatabase> {
           }
           if (!db.objectStoreNames.contains(STORE_WORKTIME)) {
             db.createObjectStore(STORE_WORKTIME)
+          }
+        }
+        if (oldVersion < 3) {
+          if (!db.objectStoreNames.contains(STORE_HISTORY)) {
+            db.createObjectStore(STORE_HISTORY)
           }
         }
       },
