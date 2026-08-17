@@ -37,4 +37,13 @@ describe('App integration', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(wrapper.text()).toContain('Daily target')
   })
+
+  it('calendar button opens calendar dialog', async () => {
+    const wrapper = await mountApp()
+    const calendar = wrapper.find('button[aria-label="Calendar"]')
+    expect(calendar.exists()).toBe(true)
+    await calendar.trigger('click')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(wrapper.text()).toContain('Calendar')
+  })
 })

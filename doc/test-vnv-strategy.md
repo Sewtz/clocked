@@ -31,6 +31,7 @@ Cases:
 
 - Worktime record from yesterday → cleared.
 - Worktime record from today → kept.
+- On rollover the expired day is archived to the `history` store; an open punch is closed at `out = 86399` before archiving.
 
 #### Formatting
 
@@ -70,13 +71,20 @@ Cases:
 - `setSettings(partial)` merges patch, enforces break2 cascade.
 - Getters return correct values for running / break states.
 - Midnight rollover path: when the store detects the worktime record is from yesterday, it clears it and resets state.
+- `reset()` archives before clearing; an open punch is closed at `out = 86399`.
+- `loadHistoryRange` populates `historyCache` and merges today's live worktime into it.
+- `clearHistory()` wipes the history store and empties the in-memory cache.
 
 ### 4. Storage tests (IndexedDB via `fake-indexeddb`)
 
 - DB v2 schema: `settings` store (key `'settings'`) and `worktime` store (key `'worktime'`).
+- DB v3 schema: adds `history` store (key `'YYYY-MM-DD'`); existing records preserved on upgrade.
 - `getSettings()` returns null when empty; `putSettings` round-trips.
 - `getWorktime()` returns null when empty; `putWorktime` round-trips punches array.
 - `clearWorktime()` deletes the worktime record.
+- `getHistoryDay` / `putHistoryDay` / `deleteHistoryDay` round-trip and delete archived records.
+- `getHistoryRange(startYMD, endYMD)` returns only records within the inclusive range.
+- `clearHistory()` empties the history store.
 - DB upgrade v1→v2: drops `entries` store, creates both new stores.
 
 ### 5. Debug API tests
@@ -87,6 +95,15 @@ Cases:
 - `__clocked.tickTo(36000)` advances clock, getters reflect new now.
 - `__clocked.simulateMidnight()` clears worktime.
 - `__clocked.state.settings` reflects current persisted settings.
+- `__clocked.getHistory()` returns archived records; `clear()` archives before clearing.
+- `__clocked.clearHistory()` wipes the history store.
+
+### 6. Calendar component tests
+
+- `CalendarGrid` renders exactly 28 cells (4 Mon–Sun weeks), green dot per day with data, today outlined, selection highlighted, `select` emitted with the YMD.
+- `DayEventList` renders recompute segments (work/gap/mandatory-break) with `HH:MM` start/end and durations, plus daily totals; open punches show a live end time.
+- `CalendarDialog` loads history on mount, renders the grid + selected-day event list, closes on backdrop/×, and locks body scroll while mounted.
+- `useScrollLock` locks `document.body.style.overflow` on mount and restores it on unmount.
 
 ## Manual V&V (run after any change, at minimum after storage/SW/UI changes)
 
@@ -115,12 +132,17 @@ Run with `pnpm preview` (serves on `localhost`, so the real SW registers):
     __clocked.state          // verify worked grew
     __clocked.simulateMidnight()
     __clocked.state          // verify worktime cleared, viewState clock-in
+    __clocked.getHistory()   // verify the archived day is present
+    __clocked.clearHistory()
+    __clocked.getHistory()   // verify []
     __clocked.setSettings({break1_enabled: false})
     __clocked.settings.break1_enabled // false
     __clocked.settings.break2_enabled // also false (cascaded)
     __clocked.resetSettings()
     __clocked.useRealClock()
     ```
+13. **Calendar** — open the dialog from the top-bar calendar icon. Verify a 4-week Mon–Sun grid renders with green dots on days with data. Click a day → event list shows recompute segments (work/gap/break) with correct durations and totals. Today's open punch shows a live-updating duration. Verify the dialog scrolls internally while the body behind does not scroll. Use `__clocked.simulateMidnight()` to archive today, then reopen the calendar — yesterday's dot appears in history and today no longer shows a dot (empty worktime).
+14. **Delete historic data** — open Settings, click "Delete historic data" (button shows "Click again to confirm"), click again → all calendar dots disappear. Reopen the calendar to confirm. Reload the page → history stays cleared.
 
 ## Storage / SW-specific checks (when those areas change)
 

@@ -24,6 +24,8 @@ declare global {
       punchOut(): Promise<void>
       setPunches(punches: Array<{ in: number; out?: number }>): Promise<void>
       clear(): Promise<void>
+      getHistory(): Promise<Worktime[]>
+      clearHistory(): Promise<void>
       tickTo(sec: number): void
       tickForward(sec: number): void
       useRealClock(): void

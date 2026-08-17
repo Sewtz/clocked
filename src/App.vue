@@ -4,9 +4,11 @@ import { useClockStore, stopTick } from '@/stores/clock'
 import ClockInView from '@/components/ClockInView.vue'
 import RunningView from '@/components/RunningView.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
+import CalendarDialog from '@/components/CalendarDialog.vue'
 
 const store = useClockStore()
 const settingsOpen = ref(false)
+const calendarOpen = ref(false)
 
 function onVisibility() {
   if (document.visibilityState === 'visible') store.onVisible()
@@ -40,6 +42,7 @@ const todayLabel = computed(() =>
 <template>
   <div class="min-h-dvh flex flex-col bg-bg text-text font-sans">
     <SettingsDialog v-if="settingsOpen" @close="settingsOpen = false" />
+    <CalendarDialog v-if="calendarOpen" @close="calendarOpen = false" />
 
     <header class="border-b border-border px-6 py-4 flex items-center justify-between">
       <div class="flex items-center gap-3">
@@ -51,6 +54,21 @@ const todayLabel = computed(() =>
       </div>
       <div class="flex items-center gap-4">
         <span class="font-mono text-xs text-text-faint">{{ todayLabel }}</span>
+        <button
+          type="button"
+          class="text-text-faint hover:text-text transition-colors"
+          aria-label="Calendar"
+          title="Calendar"
+          :disabled="store.loadStatus !== 'ready'"
+          @click="calendarOpen = true"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+        </button>
         <button
           type="button"
           class="text-text-faint hover:text-text transition-colors"

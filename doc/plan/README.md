@@ -26,8 +26,9 @@ Step-by-step plan for implementing the Clocked PWA. Designed to be executed by a
 | `08-restructure-storage.md` | WP8 — Storage restructure (settings + worktime) | 12 |
 | `09-redesign-ui.md` | WP9 — UI redesign (Figma v1.0) | 10 |
 | `10-edit-times.md` | WP10 — Editable punch times | 6 |
+| `11-calendar.md` | WP11 — Calendar & historic data archive | 10 |
 
-**Total: ~81 tasks.**
+**Total: ~91 tasks.**
 
 **Note on WP8:** This work package supersedes parts of WP1, WP2, and WP3. After WP8 is complete, the old `entries` store, `Entry`/`Segment` types, and `recomputeBreaks` function are removed. Do not work WP1/WP2/WP3 tasks before WP8 — they describe the old model.
 

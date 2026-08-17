@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
 import { useClockStore } from '@/stores/clock'
+import { useScrollLock } from '@/components/ui/useScrollLock'
 import { secToTimeInput, timeInputToSec } from '@/domain/format'
 
 const emit = defineEmits<{ close: [] }>()
 const store = useClockStore()
+useScrollLock()
 
 interface DraftPunch { in: string; out: string | null }
 

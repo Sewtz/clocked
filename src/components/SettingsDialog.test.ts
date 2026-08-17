@@ -66,4 +66,31 @@ describe('SettingsDialog', () => {
     await backdrop.trigger('click')
     expect(wrapper.emitted('close')).toBeTruthy()
   })
+
+  it('delete history requires two clicks and calls store.clearHistory', async () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    vi.spyOn(store, 'clearHistory').mockResolvedValue()
+    const wrapper = mount(SettingsDialog)
+    const delBtn = findButton(wrapper, 'Delete historic data')
+    expect(delBtn).toBeDefined()
+    await delBtn!.trigger('click')
+    expect(findButton(wrapper, 'Click again to confirm')).toBeDefined()
+    expect(store.clearHistory).not.toHaveBeenCalled()
+    await findButton(wrapper, 'Click again to confirm')!.trigger('click')
+    expect(store.clearHistory).toHaveBeenCalledTimes(1)
+    expect(findButton(wrapper, 'Delete historic data')).toBeDefined()
+  })
+
+  it('delete history confirm state resets after dialog closes', async () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    const wrapper = mount(SettingsDialog)
+    const delBtn = findButton(wrapper, 'Delete historic data')
+    await delBtn!.trigger('click')
+    expect(findButton(wrapper, 'Click again to confirm')).toBeDefined()
+    await wrapper.unmount()
+    const wrapper2 = mount(SettingsDialog)
+    expect(findButton(wrapper2, 'Delete historic data')).toBeDefined()
+  })
 })

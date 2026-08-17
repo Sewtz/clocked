@@ -206,3 +206,33 @@ All questions in `discussion.md` have been answered. New decisions will be appen
 - **Context:** previously the only edit affordances were the WP4 `+Nmin`/`custom-time`/`edit-start` controls, removed in WP9-T6/T7. The user requested that any in/out time be editable by clicking the timeline.
 - **Decision:** clicking anywhere on the `Timeline` opens `EditTimesDialog` (modal styled identically to `SettingsDialog`). The dialog lists every punch event as a separate row: "Clocked in" with `<input type="time">`, and (if present) "Clocked out" with `<input type="time">`. The running punch has only its "Clocked in" row. The native time picker is invoked by the browser for `<input type="time">`. Save routes through the new `store.replacePunches(punches)` action, which clamps values to `[0, 86399]`, recomputes `_isClockedIn` from the last punch's `out`, and persists. Out-of-order edits (`out < in` or `punches[i].out > punches[i+1].in`) are rejected with an inline error and the Save button is disabled; the dialog stays open. The debug API `setPunches` is refactored to call `replacePunches` so all mutations go through one action.
 - **Consequences:** editing drops sub-minute precision (seconds are zeroed) because `<input type="time">` only carries `HH:MM`. This is acceptable: punch times are user-corrected approximations and the device clock is already user-editable (ADR-009). Adding or deleting punches is **not** supported from the UI — use the debug API for that.
+
+## ADR-030 — Historic data archive (`history` store)
+
+- **Context:** previously midnight rollover deleted today's punches (ADR-010, ADR-021). The user wanted historic data preserved in a separate category for a calendar view, while keeping today's data in the live `worktime` store.
+- **Decision:** DB `clocked` version 3 adds a `history` object store (out-of-line keys, keyed by `YYYY-MM-DD`). The stored value is the existing `Worktime` type (`{date, punches: [{in, out?}]}`) — raw punch events only, no aggregates. On midnight rollover, `reset()` archives the current worktime (closing any open punch at `out=86399` first) via `putHistoryDay(worktime)`, then clears the live `worktime` store. Today's live worktime is overlaid onto the history cache at view time so the calendar shows today's dot and live segments.
+- **Consequences:** settings changes retroactively affect how historic days are displayed (recompute is at view time, not storage time). Storage footprint grows slowly (one record per worked day). Open-punch rollover closes at 23:59:59 — the next day starts fresh (no carryover). ADR-010's "no history" stance is superseded for the worktime store; settings persistence is unchanged.
+
+## ADR-031 — Calendar dialog (4-week Mon–Sun grid, green dots, segment list)
+
+- **Context:** the user wanted a calendar icon in the top bar that opens a dialog showing the last 4 weeks with green dots on days with data and a click-through event list.
+- **Decision:** add a calendar icon button in `App.vue`'s header (between date label and gear). Opens `CalendarDialog.vue` — a modal styled identically to `SettingsDialog`. Renders `CalendarGrid` (4 weeks Mon–Sun, 28 cells, green dot via `var(--color-work)` if the day has punches, today outlined, selected cell highlighted) and `DayEventList` (full `recompute()` segments — work/gap/mandatory-break — with start/end `HH:MM`, duration, and daily totals). The dialog body scrolls internally (`max-h-[85dvh] overflow-y-auto`); the app behind is scroll-locked via `useScrollLock()` composable applied to all three dialogs (Settings, EditTimes, Calendar).
+- **Consequences:** ADR-010's "no historical view" stance is fully superseded. The calendar always shows exactly 4 calendar weeks (including the current week); today's live data is overlaid onto the historic cache. Selecting today shows live updating segments (the `nowSec` prop drives `recompute()`).
+
+## ADR-032 — Delete historic data via two-click confirm
+
+- **Context:** the user wanted a "delete historic data" button in Settings.
+- **Decision:** add a "Delete historic data" button in `SettingsDialog`'s footer. First click sets inline confirm state (button text changes to "Click again to confirm"); second click within the same dialog session calls `store.clearHistory()` which wipes the entire `history` store. Closing the dialog resets the confirm state. No native `window.confirm()` (breaks the dark-mono design language).
+- **Consequences:** the entire history store is wiped (no threshold-based retention). Calendar dots disappear immediately if the dialog is open. The live `worktime` store is unaffected.
+
+## ADR-033 — Scroll-lock composable for all modal dialogs
+
+- **Context:** the user explicitly required that the app behind a dialog must not scroll when a dialog is visible.
+- **Decision:** add `src/components/ui/useScrollLock.ts` — a Vue composable that captures `document.body.style.overflow` on mount, sets it to `'hidden'`, and restores the captured value on unmount. Applied to `SettingsDialog`, `EditTimesDialog`, and `CalendarDialog`.
+- **Consequences:** body scroll is locked only while a dialog is mounted. Multiple simultaneous locks (should not happen in this app) restore to the captured value, which may be `'hidden'` if the second lock captured it — acceptable for the single-dialog-at-a-time UX. iOS Safari may still allow touch-scroll despite `overflow: hidden`; a `position: fixed` alternative is documented but not implemented for MVP.
+
+## ADR-034 — Debug API exposes history
+
+- **Context:** developers need to inspect and clear the history store from the console.
+- **Decision:** add `window.__clocked.getHistory()` (returns all archived `Worktime` records) and `window.__clocked.clearHistory()` (wipes the store). `simulateMidnight()` now exercises the archive path automatically because `checkRollover` → `reset()` archives.
+- **Consequences:** the existing `simulateMidnight` test path now writes to history; tests that asserted "no side effects" after `clear()` need updating. Help text lists the new methods.
