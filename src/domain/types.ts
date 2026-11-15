@@ -20,10 +20,41 @@ export const DEFAULT_SETTINGS: Settings = {
   break2_duration: 900,
 }
 
+/** A work interval derived from a valid event sequence; consumed by `recompute`. */
+export interface Punch {
+  in: number
+  out?: number
+}
+
 export interface Worktime {
   date: string
-  punches: Array<{ in: number; out?: number }>
+  punches: Punch[]
 }
+
+export type PunchEventType = 'in' | 'out'
+
+/** One clock-in or clock-out at `t` seconds since local midnight. */
+export interface PunchEvent {
+  type: PunchEventType
+  t: number
+}
+
+export type AnalysisIssueKind =
+  | 'starts-with-out'
+  | 'double-in'
+  | 'double-out'
+  | 'open-past-day'
+  | 'unsorted'
+
+export interface AnalysisIssue {
+  /** Index of the event that makes the sequence faulty. */
+  index: number
+  kind: AnalysisIssueKind
+}
+
+export type Analysis =
+  | { status: 'valid'; punches: Punch[]; open: boolean }
+  | { status: 'faulty'; issues: AnalysisIssue[] }
 
 export type BreakState = 'running' | 'break1' | 'break2'
 
