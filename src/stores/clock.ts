@@ -276,6 +276,17 @@ export const useClockStore = defineStore('clock', {
       this.historyCache = range
     },
 
+    /**
+     * All stored days in [from, to] (YYYY-MM-DD, inclusive) plus today's live record,
+     * for exports. Unlike loadHistoryRange, this does not touch the calendar cache.
+     */
+    async loadDaysForExport(from: string, to: string): Promise<Record<string, Worktime>> {
+      const days = await getHistoryRange(from, to)
+      const live = this.worktime
+      if (live && live.events.length > 0 && live.date >= from && live.date <= to) days[live.date] = plain(live)
+      return days
+    },
+
     async clearHistory(): Promise<void> {
       await clearHistory()
       this.historyCache = {}

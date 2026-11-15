@@ -5,6 +5,7 @@ import { useClockStore } from '@/stores/clock'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import CalendarDialog from './CalendarDialog.vue'
 import EditTimesDialog from './EditTimesDialog.vue'
+import ShareDialog from './ShareDialog.vue'
 import { setClock } from '@/domain/clock'
 import { getHistoryDay, clearHistory } from '@/storage/history'
 import { punchesToEvents } from '@/domain/events'
@@ -39,8 +40,8 @@ describe('CalendarDialog', () => {
   it('renders the calendar grid', () => {
     const wrapper = mountDialog(new Date(2026, 7, 19, 12, 0))
     expect(wrapper.text()).toContain('Calendar')
-    // 28 day cells + close + "Edit day"
-    expect(wrapper.findAll('button')).toHaveLength(30)
+    // 28 day cells + share + close + "Edit day"
+    expect(wrapper.findAll('button')).toHaveLength(31)
   })
 
   it('shows the selected day event list from history', async () => {
@@ -153,5 +154,20 @@ describe('CalendarDialog', () => {
     await wrapper.find('button[aria-label="2026-08-17"]').trigger('click')
     expect(label()).toBe(expected(new Date(2026, 7, 17)))
     expect(wrapper.find('button[aria-label="2026-08-17"]').attributes('aria-pressed')).toBe('true')
+  })
+
+  it('the share button opens the share dialog; "Fix" on a faulty day selects it', async () => {
+    const now = new Date(2026, 7, 19, 12, 0)
+    setClock(() => now.getTime())
+    const store = useClockStore()
+    await store.replaceDayEvents('2026-08-12', [{ type: 'in', t: 28800 }, { type: 'in', t: 36000 }])
+    const wrapper = mountDialog(now)
+    await wrapper.find('button[aria-label="Share"]').trigger('click')
+    const share = wrapper.findComponent(ShareDialog)
+    expect(share.exists()).toBe(true)
+    await vi.waitFor(() => expect(share.find('button[aria-label="Fix 2026-08-12"]').exists()).toBe(true))
+    await share.find('button[aria-label="Fix 2026-08-12"]').trigger('click')
+    expect(wrapper.findComponent(ShareDialog).exists()).toBe(false)
+    expect(wrapper.find('button[aria-label="2026-08-12, faulty"]').attributes('aria-pressed')).toBe('true')
   })
 })

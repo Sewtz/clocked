@@ -209,6 +209,12 @@ When the recompute algorithm introduces a mandatory pause:
 - `CalendarGrid` renders the last 4 calendar weeks (Mon–Sun, 28 cells); a green dot marks a valid day with events, a red dot a faulty day (open clock-in counts as valid only for today); today is outlined in grey; the selected day gets an accent (acid-green) border, a light green tint and a bold green number, and is written out above its events (e.g. "Tuesday, 10 Nov 2026").
 - Clicking a day renders `DayEventList` below the grid. It opens with a **day summary** — Worked, Breaks, and the balance against `daily_target` (`Overtime +HH:MM`, `Undertime −HH:MM`, `On target`; today while below target shows `Remaining HH:MM` like the main screen; `—` for a faulty day; none for an empty day). Below it, for a valid day, the full `recompute()` segments (work / gap / mandatory-break) with `HH:MM` start/end and durations; for a faulty day, the raw events with issue hints and "totals unavailable". Historic days pass `nowSec = 86399`; today passes the live seconds-since-midnight so an open punch updates live.
 - **Edit day** next to the selected date opens the day editor for that date (disabled for future days); the history range is reloaded when it closes.
+
+### Sharing working times (ADR-044)
+
+- The **Share** icon in the calendar header opens `ShareDialog`: presets (This week, Last week, This month, Last month) and From–To date inputs; the default is last week.
+- `store.loadDaysForExport(from, to)` reads any range from `history` plus the live day (it does not touch the calendar cache). `buildExport()` (`src/domain/export.ts`) turns it into one row per calendar day with `analyse()` + `recompute()` — status `ok`/`open`/`faulty`/empty — and totals over valid days. The dialog previews worked, breaks, balance and lists faulty days (**Fix** selects the day in the calendar when it is in the grid).
+- **Share** builds the CSV (`toCsv`: BOM, `;`, CRLF, raw events per day, TOTAL row), the subject and the mail text (`toMailText`) and calls `shareExport()` (`src/share/share.ts`): Web Share with the file where supported (share sheet → Mail), else download + `mailto:` draft. The dialog closes when shared and shows a hint after the fallback.
 - The dialog body scrolls internally (`max-h-[85dvh]`); the app behind is scroll-locked via the `useScrollLock` composable (applied to Settings, EditTimes, and Calendar dialogs).
 
 ## PWA wiring
