@@ -108,7 +108,7 @@ interface HistoryRecord extends Worktime {
 
 - Simpler mental model: the user clocks in and out; each pair is one session.
 - Breaks are **auto-derived** from gaps between punches and configurable threshold settings — they are not stored explicitly.
-- Worked time = Σ(out − in) for each closed punch, minus auto-derived break time.
+- Worked time = Σ(out − in) for each closed punch, minus mandatory pauses injected *during* work. Breaks fitted into a gap do not reduce worked time, because the gap was never worked (ADR-035).
 - The `Recomputed` type (returned by `recompute()`) includes a `segments: DerivedSegment[]` array for UI rendering (timeline strip, stats grid). Each segment is typed `'work'`, `'gap-break'`, or `'mandatory-break'` and carries a start/end seconds-since-midnight. Segments are not stored — they are derived on every read.
 
 ## Break derivation algorithm
@@ -131,8 +131,8 @@ Input: `punches` (in/out seconds-since-midnight) + `settings` + `nowSeconds` (se
      - Else (`nowSec >= trigger + break1_duration`) → **elapsed**: `breakState='running'`, continue walk so break2 can be evaluated.
    - When `workedElapsed` crosses `break2_trigger` (after break1 done) and break2 not gap-satisfied:
      - Same live/elapsed logic for break2.
-6. `breakSeconds = sum of consumed gap portions + sum of mandatory pause durations (live or elapsed)`.
-   `workedSeconds = max(0, workedGross − breakSeconds)`.
+6. `breakSeconds = sum of gap-fitted break durations + sum of injected mandatory pause durations (live or elapsed)`.
+   `workedSeconds = max(0, workedGross − injected mandatory pause durations)` — gap-fitted breaks are **not** subtracted, since gap time is not part of `workedGross` (ADR-035).
 7. `displaySeconds = workedSeconds` (breaks excluded).
 
 ### State machine

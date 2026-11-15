@@ -43,7 +43,10 @@ export function recompute(
 
   let break1SatisfiedByGap = false
   let break2SatisfiedByGap = false
+  // Breaks injected at a trigger during work: that time was inside a punch, so it reduces worked time.
   let mandatoryBreakSeconds = 0
+  // Breaks fitted into a gap (ADR-028): the gap was never worked, so it only counts toward breakSeconds.
+  let gapFittedBreakSeconds = 0
 
   interface GapFit {
     breakIndex: 0 | 1
@@ -60,14 +63,14 @@ let need1 = break1Dur > 0
 
         if (need1 && remaining >= break1Dur) {
           fits.push({ breakIndex: 0, duration: break1Dur })
-          mandatoryBreakSeconds += break1Dur
+          gapFittedBreakSeconds += break1Dur
           remaining -= break1Dur
           break1SatisfiedByGap = true
           need1 = false
         }
         if (!need1 && need2 && remaining >= break2Dur) {
           fits.push({ breakIndex: 1, duration: break2Dur })
-          mandatoryBreakSeconds += break2Dur
+          gapFittedBreakSeconds += break2Dur
           remaining -= break2Dur
           break2SatisfiedByGap = true
           need2 = false
@@ -167,8 +170,8 @@ let need1 = break1Dur > 0
     }
   }
 
-  const breakSeconds = mandatoryBreakSeconds
-  const workedSeconds = Math.max(0, workedGross - breakSeconds)
+  const breakSeconds = mandatoryBreakSeconds + gapFittedBreakSeconds
+  const workedSeconds = Math.max(0, workedGross - mandatoryBreakSeconds)
 
   return {
     workedSeconds,

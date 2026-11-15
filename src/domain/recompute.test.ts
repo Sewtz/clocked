@@ -132,8 +132,9 @@ describe('recompute', () => {
     // The remaining 600s of gap is "clocked out" (not work, not break).
     // No mandatory break1 inserted. break1Done = true via gap.
     // workedGross = 21600 (first punch) + 0 (second open punch) = 21600.
-    // breakSeconds = 1800 (from gap).
-    // workedSeconds = 21600 - 1800 = 19800.
+    // breakSeconds = 1800 (fitted into the gap).
+    // The gap was never worked, so the fitted break does not reduce worked time (#15).
+    // workedSeconds = 21600.
     const r = recompute([
       { in: 0, out: 21600 },
       { in: 24000 },
@@ -141,7 +142,7 @@ describe('recompute', () => {
     expect(r.breakState).not.toBe('break1')
     expect(r.breakEndsAtMs).toBeUndefined()
     expect(r.breakSeconds).toBe(1800)
-    expect(r.workedSeconds).toBe(19800)
+    expect(r.workedSeconds).toBe(21600)
     const mbs = r.segments.filter(s => s.type === 'mandatory-break')
     expect(mbs).toHaveLength(1)
     expect(mbs[0].breakIndex).toBe(0)
@@ -155,9 +156,9 @@ describe('recompute', () => {
   it('gap >= break1_duration + break2_duration satisfies both breaks', () => {
     // Punch [0..21600] closed, gap 21600..24600 (3000s >= 1800+900=2700), then open punch.
     // gap >= break1_dur + break2_dur -> satisfies both.
-    // mandatoryBreakSeconds = 1800 + 900 = 2700.
-    // workedGross = 21600.
-    // workedSeconds = 21600 - 2700 = 18900.
+    // breakSeconds = 1800 + 900 = 2700 (both fitted into the gap).
+    // workedGross = 21600; fitted breaks do not reduce it (#15).
+    // workedSeconds = 21600.
     const r = recompute([
       { in: 0, out: 21600 },
       { in: 24600 },
@@ -165,7 +166,7 @@ describe('recompute', () => {
     expect(r.breakState).toBe('running')
     expect(r.breakEndsAtMs).toBeUndefined()
     expect(r.breakSeconds).toBe(2700)
-    expect(r.workedSeconds).toBe(18900)
+    expect(r.workedSeconds).toBe(21600)
     const mbs = r.segments.filter(s => s.type === 'mandatory-break')
     expect(mbs).toHaveLength(2)
     const mb1 = mbs.find(s => s.breakIndex === 0)!
@@ -182,9 +183,9 @@ describe('recompute', () => {
   it('two gaps, first satisfies break1, second satisfies break2', () => {
     // Punch [0..21600], gap 21600..24000 (2400s >= 1800) satisfies break1.
     // Punch [24000..30000], gap 30000..31200 (1200s >= 900) satisfies break2.
-    // mandatoryBreakSeconds = 1800 + 900 = 2700.
-    // workedGross = 21600 + 6000 = 27600.
-    // workedSeconds = 27600 - 2700 = 24900.
+    // breakSeconds = 1800 + 900 = 2700 (each fitted into its gap).
+    // workedGross = 21600 + 6000 = 27600; fitted breaks do not reduce it (#15).
+    // workedSeconds = 27600.
     const r = recompute([
       { in: 0, out: 21600 },
       { in: 24000, out: 30000 },
@@ -193,7 +194,7 @@ describe('recompute', () => {
     expect(r.breakState).toBe('running')
     expect(r.breakEndsAtMs).toBeUndefined()
     expect(r.breakSeconds).toBe(2700)
-    expect(r.workedSeconds).toBe(24900)
+    expect(r.workedSeconds).toBe(27600)
     const mbs = r.segments.filter(s => s.type === 'mandatory-break')
     expect(mbs).toHaveLength(2)
     const mb1 = mbs.find(s => s.breakIndex === 0)!
@@ -211,9 +212,9 @@ describe('recompute', () => {
   it('short gap = break1_duration satisfies break1 (>=), no mandatory break1', () => {
     // Punch [0..21600], gap 21600..23400 (1800s == break1_duration).
     // gap >= break1_duration -> break1 SATISFIED by gap (changed from old > behavior).
-    // mandatoryBreakSeconds = 1800 (from gap).
-    // workedGross = 21600.
-    // workedSeconds = 21600 - 1800 = 19800.
+    // breakSeconds = 1800 (fitted into the gap).
+    // workedGross = 21600; the fitted break does not reduce it (#15).
+    // workedSeconds = 21600.
     const r = recompute([
       { in: 0, out: 21600 },
       { in: 23400 },
@@ -221,7 +222,7 @@ describe('recompute', () => {
     expect(r.breakState).toBe('running')
     expect(r.breakEndsAtMs).toBeUndefined()
     expect(r.breakSeconds).toBe(1800)
-    expect(r.workedSeconds).toBe(19800)
+    expect(r.workedSeconds).toBe(21600)
     const mbs = r.segments.filter(s => s.type === 'mandatory-break')
     expect(mbs).toHaveLength(1)
     expect(mbs[0].breakIndex).toBe(0)
@@ -321,5 +322,23 @@ describe('recompute', () => {
     const r = recompute([{ in: 3600, out: 1800 }], S, 3600)
     expect(r.workedSeconds).toBe(0)
     expect(r.segments.filter(s => s.type === 'gap')).toHaveLength(0)
+  })
+  it('lunch gap covering break1 does not reduce worked time (#15)', () => {
+    // 08:00-14:00 work, 40 min lunch, 14:40-16:00 work. Gross 7h20m = 26400s.
+    const r = recompute([
+      { in: 28800, out: 50400 },
+      { in: 52800, out: 57600 },
+    ], S, 57600)
+    expect(r.workedSeconds).toBe(26400)
+    expect(r.breakSeconds).toBe(1800)
+    const mbs = r.segments.filter(s => s.type === 'mandatory-break')
+    expect(mbs).toEqual([{ type: 'mandatory-break', startSec: 50400, endSec: 52200, breakIndex: 0 }])
+  })
+
+  it('injected break still reduces worked time when no gap fits it', () => {
+    // One 7h punch, no gap: break1 is injected at 6h worked and is deducted.
+    const r = recompute([{ in: 0, out: 25200 }], S, 25200)
+    expect(r.breakSeconds).toBe(1800)
+    expect(r.workedSeconds).toBe(25200 - 1800)
   })
 })
