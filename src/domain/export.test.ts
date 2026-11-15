@@ -180,19 +180,22 @@ describe('mail text', () => {
     for (const line of table.filter(l => l.includes('|'))) expect(pipes(line)).toEqual(pipes(table[0]))
   })
 
-  it('the fallback is a short summary without the table, asking to attach the file', () => {
-    expect(toMailText(data, { variant: 'summary' }).split('\n')).toEqual([
-      'Working times 2026-11-09 – 2026-11-15',
-      '',
-      'Worked:  21:30',
-      'Breaks:  01:15',
-      'Balance: -02:30 (3 days)',
-      '',
-      '1 day has inconsistent clock times and is not included in the totals:',
-      '  Wed 2026-11-11: in 08:15, in 12:45, out 17:00',
-      '',
-      'Details: please attach the downloaded file clocked_2026-11-09_2026-11-15.csv.',
-    ])
+  it('the mail draft (no attachment) has the same table but no attachment line', () => {
+    const draft = toMailText(data, { attached: false })
+    expect(draft).toContain('Mon 2026-11-09 | 08:00 | 16:30 |  08:00 |  00:30 |  ±00:00')
+    expect(draft).toContain('Total (3 days) |       |       |  21:30 |  01:15 |  -02:30')
+    expect(draft).not.toContain('attached')
+    expect(draft.trimEnd().endsWith('Wed 2026-11-11: in 08:15, in 12:45, out 17:00')).toBe(true)
+  })
+
+  it('maxDayRows hides later rows but keeps the full total', () => {
+    const text = toMailText(data, { attached: false, maxDayRows: 2 })
+    expect(text).toContain('Tue 2026-11-10 |')
+    expect(text).not.toContain('Fri 2026-11-13 |')
+    expect(text).toContain('… 2 days more')
+    expect(text).toContain('(2 days not shown — the mail draft is limited in length.)')
+    expect(text).toContain('Total (3 days) |')
+    expect(text).toContain('21:30')
   })
 
   it('shows an open day as running until now', () => {

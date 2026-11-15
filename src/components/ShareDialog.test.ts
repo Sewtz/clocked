@@ -111,18 +111,20 @@ describe('ShareDialog', () => {
     expect(payload.csv).toContain('2026-11-11;Wed;faulty')
     expect(payload.text).toContain('Day            | In    | Out   | Worked | Breaks | Balance')
     expect(payload.text).toContain('see the attached file')
-    expect(payload.fallbackText).not.toContain('|')
-    expect(payload.fallbackText).toContain('please attach the downloaded file')
+    const draft = payload.draftText()
+    expect(draft).toContain('Day            | In    | Out   | Worked | Breaks | Balance')
+    expect(draft).not.toContain('attached')
+    expect(payload.draftText(0)).toContain('… 3 days more')
     expect(w.emitted('close')).toBeTruthy()
   })
 
-  it('stays open with a hint after the download fallback; nothing on cancel', async () => {
-    shareExport.mockResolvedValueOnce('downloaded').mockResolvedValueOnce('cancelled')
+  it('stays open with a hint after opening a mail draft; nothing on cancel', async () => {
+    shareExport.mockResolvedValueOnce('draft').mockResolvedValueOnce('cancelled')
     const w = await mountLastWeek()
     const btn = w.findAll('button').find(b => b.text() === 'Share')!
     await btn.trigger('click')
     await flushPromises()
-    expect(w.text()).toContain('Saved clocked_2026-11-09_2026-11-15.csv — attach it to the mail draft.')
+    expect(w.text()).toContain('Opened a mail draft with the table.')
     await btn.trigger('click')
     await flushPromises()
     expect(w.emitted('close')).toBeFalsy()

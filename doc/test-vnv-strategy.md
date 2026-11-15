@@ -36,8 +36,8 @@ Cases:
 #### Export (`export.ts`, `share.ts`)
 
 - Presets (Monday weeks, months, year boundary), inclusive date lists; day rows for ok/open/faulty/empty days; totals over valid days with faulty dates listed.
-- CSV: BOM, `;`, CRLF, exact rows incl. TOTAL, quoting, no cell starting with `=`/`+`/`-`/`@` outside the `*_min` columns. Mail text: exact table (header, rule, rows, total row, column separators aligned), faulty list, summary variant for the fallback, open day, empty period.
-- `shareExport`: share sheet with file/subject/text; cancel → no fallback; no file sharing or `NotAllowedError` → download + `mailto:`. `mailtoUrl` encodes and shortens long bodies.
+- CSV: BOM, `;`, CRLF, exact rows incl. TOTAL, quoting, no cell starting with `=`/`+`/`-`/`@` outside the `*_min` columns. Mail text: exact table (header, rule, rows, total row, column separators aligned), faulty list, draft without attachment line, `maxDayRows` shortening, open day, empty period.
+- `shareExport`: share sheet with file/subject/text; cancel → no draft; no file sharing or `NotAllowedError` → `mailto:` draft with the table, no file. `fittingMailtoUrl` encodes and drops day rows until the URL fits, keeping the total.
 
 #### Day rollover
 
@@ -134,7 +134,7 @@ Replay typical usage against the **production build** in real Chromium (desktop 
 | `e2e/editing.e2e.ts` | delete → faulty view (survives reload) → Fix times → totals back; correct a late clock-in; delete everything → clock-in screen; seeded faulty day |
 | `e2e/calendar.e2e.ts` | midnight archive → calendar; forgot to clock out → 23:59; faulty day archived as-is → fixed from calendar; record a forgotten day; future locked; delete a past day; today live |
 | `e2e/upgrade.e2e.ts` | real v3 DB with `{ punches }` on the same origin → v4 with `{ events }`, UI totals correct |
-| `e2e/share.e2e.ts` | share sheet (stubbed) receives the CSV with BOM, subject and mail text; download fallback with the full month's CSV; **Fix** jumps to the faulty day |
+| `e2e/share.e2e.ts` | share sheet (stubbed) receives the CSV with BOM, subject and mail text; mail-draft fallback carries the table and creates no file; **Fix** jumps to the faulty day |
 | `e2e/offline.e2e.ts` | reload offline after first visit; manifest is installable |
 
 First-time setup on Linux/WSL: `pnpm exec playwright install chromium` and the system libraries (`sudo apt-get install -y libnss3 libnspr4 libasound2t64` on Ubuntu 24.04, or `pnpm exec playwright install-deps chromium`). Debug with `pnpm test:e2e:ui` or the trace link printed on failure.

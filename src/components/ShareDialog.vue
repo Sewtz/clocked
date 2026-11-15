@@ -81,11 +81,11 @@ async function share() {
     fileName: exportFileName(d.range),
     csv: toCsv(d),
     subject: mailSubject(d.range),
-    text: toMailText(d),
-    fallbackText: toMailText(d, { variant: 'summary' }),
+    text: toMailText(d, { attached: true }),
+    draftText: maxDayRows => toMailText(d, { attached: false, maxDayRows }),
   })
   if (result === 'shared') emit('close')
-  else if (result === 'downloaded') status.value = `Saved ${exportFileName(d.range)} — attach it to the mail draft.`
+  else if (result === 'draft') status.value = 'Opened a mail draft with the table. If nothing happened, set up a default mail app.'
 }
 </script>
 

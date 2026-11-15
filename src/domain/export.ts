@@ -212,14 +212,19 @@ export function textTable(header: string[], rows: string[][], footer: string[], 
   return [fmt(header), rule, ...rows.map(fmt), rule, fmt(footer)]
 }
 
-export type MailTextVariant = 'table' | 'summary'
+export interface MailTextOptions {
+  /** True when the CSV travels with the mail (share sheet); the fallback draft has no attachment. */
+  attached: boolean
+  /** Show at most this many day rows (the mailto: fallback is length-limited). Totals stay complete. */
+  maxDayRows?: number
+}
 
 /**
- * Mail body. `table` (share sheet, CSV attached): one table row per day with events plus a
- * total row. `summary` (mailto fallback, length-limited): totals only, asking to attach
- * the downloaded CSV.
+ * Mail body: a table with one row per day with events plus a total row, then the faulty
+ * days with their raw events. With `maxDayRows`, later rows are replaced by a
+ * "… N more days not shown" line.
  */
-export function toMailText(data: ExportData, opts: { variant: MailTextVariant } = { variant: 'table' }): string {
+export function toMailText(data: ExportData, opts: MailTextOptions = { attached: true }): string {
   const t = data.totals
   const out: string[] = [mailSubject(data.range), '']
   const withEvents = data.days.filter(d => d.status !== 'empty')
@@ -227,23 +232,23 @@ export function toMailText(data: ExportData, opts: { variant: MailTextVariant } 
 
   if (withEvents.length === 0) {
     out.push('No working times recorded in this period.')
-  } else if (opts.variant === 'table') {
-    const rows = withEvents.map(d => {
+  } else {
+    const shown = opts.maxDayRows === undefined ? withEvents : withEvents.slice(0, Math.max(0, opts.maxDayRows))
+    const rows = shown.map(d => {
       const day = `${d.weekday} ${d.date}`
       if (d.status === 'faulty') return [day, clock(d.firstIn), clock(d.lastOut), '–', '–', 'FAULTY']
       return [day, clock(d.firstIn), d.status === 'open' ? 'now' : clock(d.lastOut),
         dur(d.workedSec!), dur(d.breakSec!), signedDur(d.balanceSec!)]
     })
+    const hidden = withEvents.length - shown.length
+    if (hidden > 0) rows.push([`… ${dayWord(hidden)} more`, '', '', '', '', ''])
     out.push(...textTable(
       ['Day', 'In', 'Out', 'Worked', 'Breaks', 'Balance'],
       rows,
       [`Total (${dayWord(t.dayCount)})`, '', '', dur(t.workedSec), dur(t.breakSec), signedDur(t.balanceSec)],
       [false, false, false, true, true, true],
     ))
-  } else {
-    out.push(`Worked:  ${dur(t.workedSec)}`)
-    out.push(`Breaks:  ${dur(t.breakSec)}`)
-    out.push(`Balance: ${signedDur(t.balanceSec)} (${dayWord(t.dayCount)})`)
+    if (hidden > 0) out.push(`(${dayWord(hidden)} not shown — the mail draft is limited in length.)`)
   }
 
   const faulty = data.days.filter(d => d.status === 'faulty')
@@ -252,9 +257,9 @@ export function toMailText(data: ExportData, opts: { variant: MailTextVariant } 
     out.push(`${faulty.length === 1 ? '1 day has' : `${faulty.length} days have`} inconsistent clock times and ${faulty.length === 1 ? 'is' : 'are'} not included in the totals:`)
     for (const d of faulty) out.push(`  ${d.weekday} ${d.date}: ${eventsText(d.events)}`)
   }
-  out.push('')
-  out.push(opts.variant === 'table'
-    ? `Details: see the attached file ${exportFileName(data.range)}.`
-    : `Details: please attach the downloaded file ${exportFileName(data.range)}.`)
+  if (opts.attached) {
+    out.push('')
+    out.push(`Details: see the attached file ${exportFileName(data.range)}.`)
+  }
   return out.join('\n')
 }

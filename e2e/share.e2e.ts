@@ -58,27 +58,38 @@ test('share sheet: the CSV is attached and the mail text summarises the week', a
   expect(shared.text).toContain('see the attached file clocked_2026-11-09_2026-11-15.csv')
 })
 
-test('fallback: downloads the CSV and opens a mail draft where files cannot be shared', async ({ page }) => {
+test('fallback: opens a mail draft with the table and creates no file', async ({ page }) => {
   await page.addInitScript(() => {
-    // Desktop-like: no file sharing (the mailto: draft itself is covered by unit tests).
+    // Desktop-like: no Web Share. Capture the mailto: link instead of launching a mail app.
     Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
     Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
+    document.addEventListener('click', e => {
+      const a = (e.target as Element | null)?.closest?.('a[href^="mailto:"]') as HTMLAnchorElement | null
+      if (!a) return
+      e.preventDefault()
+      ;(window as unknown as { __mailto: string }).__mailto = a.href
+    }, true)
   })
   await openAppAt(page, NOW)
   await seedWeek(page)
   await openShare(page)
-  await page.getByRole('button', { name: 'This month' }).click()
-  await expect(page.getByLabel('From')).toHaveValue('2026-11-01')
+  await page.getByRole('button', { name: 'Last week' }).click()
+  await expect(page.getByTestId('share-worked')).toHaveText('08:00')
 
-  const [download] = await Promise.all([
-    page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Share', exact: true }).last().click(),
-  ])
-  expect(download.suggestedFilename()).toBe('clocked_2026-11-01_2026-11-18.csv')
-  const path = await download.path()
-  const content = (await import('node:fs')).readFileSync(path!, 'utf-8')
-  expect(content.split('\r\n')).toHaveLength(1 + 18 + 1 + 1) // header, 18 days, TOTAL, trailing newline
-  await expect(page.getByRole('status')).toContainText('attach it to the mail draft')
+  let downloaded = false
+  page.on('download', () => { downloaded = true })
+  await page.getByRole('button', { name: 'Share', exact: true }).last().click()
+  await expect(page.getByRole('status')).toContainText('Opened a mail draft with the table')
+
+  const url = await page.evaluate(() => (window as unknown as { __mailto: string }).__mailto)
+  const params = new URLSearchParams(url.replace(/^mailto:\?/, '').replace(/\+/g, '%2B'))
+  expect(params.get('subject')).toBe('Working times 2026-11-09 – 2026-11-15')
+  const body = params.get('body')!
+  expect(body).toContain('Day            | In    | Out   | Worked | Breaks | Balance')
+  expect(body).toContain('Mon 2026-11-09 | 08:00 | 16:30 |  08:00 |  00:30 |  ±00:00')
+  expect(body).toContain('Wed 2026-11-11 | 08:15 | 17:00 |      – |      – |  FAULTY')
+  expect(body).not.toContain('attached')
+  expect(downloaded).toBe(false)
 })
 
 test('faulty day: "Fix" jumps to it in the calendar', async ({ page }) => {
