@@ -271,7 +271,7 @@ All questions in `discussion.md` have been answered. New decisions will be appen
 
 - **Context:** unit and component tests run in happy-dom with `fake-indexeddb`; they can't exercise the service worker, a real browser's IndexedDB upgrade path, or whole user journeys across reloads and midnight. Manual V&V of these was slow and easy to skip.
 - **Decision:** add `@playwright/test` (dev only) with scenarios in `e2e/*.e2e.ts` (named so Vitest ignores them). The suite builds into `dist-e2e/` and serves it with `vite preview` on port 4175, in Chromium desktop + Pixel 7 profiles, timezone `Europe/Berlin`, with the browser clock frozen and jumped via `page.clock.fastForward`. A v3 database is seeded on the app's origin (a routed blank page) to test the v4 upgrade for real. Run with `pnpm test:e2e`; e2e files are type-checked by `pnpm typecheck` via `tsconfig.e2e.json`. Two `data-testid`s were added to `StatsGrid` for stable assertions.
-- **Consequences:** `pnpm test:e2e` joins the V&V order before manual checks. Manual V&V shrinks to device-only behaviour (home-screen install, native time picker, iOS screen lock). Contributors need a one-time Chromium download plus system libraries on Linux. Not wired into CI yet.
+- **Consequences:** `pnpm test:e2e` joins the V&V order before manual checks. Manual V&V shrinks to device-only behaviour (home-screen install, native time picker, iOS screen lock). Contributors need a one-time Chromium download plus system libraries on Linux. Wired into CI by ADR-043.
 
 ## ADR-041 — Midnight rollover runs on start and on visibility change only
 
@@ -283,3 +283,9 @@ All questions in `discussion.md` have been answered. New decisions will be appen
 - **Context:** ADR-028 fits mandatory breaks into a gap based on the gap's duration alone. A 60-minute gap therefore got break1 **and** break2 on a 6h 06m day, although the 9h trigger for break2 was never reached (#18).
 - **Decision:** a break applies only when the day's worked time reaches its trigger (`workedGross >= trigger`). An applicable break is fitted into a long-enough gap as before; a gap taken before the trigger still counts once the trigger is reached. Breaks that don't apply are neither fitted nor injected. Injected breaks (no fitting gap) are unchanged.
 - **Consequences:** days below 9h show at most break1; days below 6h show no break. While the day is still below a trigger, an earlier gap is neutral and becomes a break once the trigger is reached; no live break banner fires in that case, because the gap already covered the break. Historic days are recomputed at view time, so they show corrected break totals without a migration. Worked time is unaffected (ADR-035). Numbered 042 because ADR-036–041 are reserved by the open PR #17.
+
+## ADR-043 — CI runs all automated checks on PRs and before every deployment
+
+- **Context:** GitHub Actions only built and deployed `main`; lint, typecheck, unit and e2e tests ran only locally, so a broken change could be merged and deployed.
+- **Decision:** `.github/workflows/ci.yml` runs two jobs: **checks** (`pnpm lint`, `pnpm typecheck`, `pnpm test`) and **e2e** (`pnpm test:e2e` with Chromium; browsers cached per Playwright version; HTML report and traces uploaded as an artifact on failure). It triggers on every pull request and is called via `workflow_call` from `deploy.yml`, whose build/deploy job `needs` it — so pushes to `main` are checked exactly once and never deploy when a check fails.
+- **Consequences:** a deployment takes a few minutes longer (e2e builds and serves its own `dist-e2e/`). In CI, Playwright retries a failed test once and rejects `test.only` (`process.env.CI`). PRs show both jobs as status checks; making them required is a repository setting.
