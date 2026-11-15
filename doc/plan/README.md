@@ -27,10 +27,13 @@ Step-by-step plan for implementing the Clocked PWA. Designed to be executed by a
 | `09-redesign-ui.md` | WP9 — UI redesign (Figma v1.0) | 10 |
 | `10-edit-times.md` | WP10 — Editable punch times | 6 |
 | `11-calendar.md` | WP11 — Calendar & historic data archive | 10 |
+| `12-event-list.md` | WP12 — Event-list punch model (add/delete, faulty days) — tasks in GitHub epic [#5](https://github.com/Sewtz/clocked/issues/5) | 9 |
 
-**Total: ~91 tasks.**
+**Total: ~100 tasks.**
 
 **Note on WP8:** This work package supersedes parts of WP1, WP2, and WP3. After WP8 is complete, the old `entries` store, `Entry`/`Segment` types, and `recomputeBreaks` function are removed. Do not work WP1/WP2/WP3 tasks before WP8 — they describe the old model.
+
+**Note on WP12:** Replaces the stored `punches` pairs with a flat `events` list (DB v4) and supersedes ADR-021. Its task specs live in GitHub issues #6–#14; `12-event-list.md` holds only context, decisions and the task index.
 
 **Note on WP9:** This work package supersedes WP4 and WP6 for the visual layer. Work WP9 only after WP8 — it depends on the new store getters and the `Recomputed.segments` field added in WP9-T2/T3, which build on the WP8 punch/settings model. WP4's data-flow, lifecycle, and accessibility guidance still apply where WP9 does not override them. The WP4 `BreakOverlay` component is deleted by WP9-T9; mandatory breaks are rendered inline by `RunningView`.
 
