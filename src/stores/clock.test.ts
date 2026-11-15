@@ -703,3 +703,23 @@ describe('replaceDayEvents after midnight with a stale live record', () => {
     expect((await getHistoryDay('2026-07-20'))!.events).toEqual(punchesToEvents([{ in: 28800, out: 61200 }]))
   })
 })
+
+describe('loadDaysForExport', () => {
+  it('returns history in the range plus the live day, without touching the calendar cache', async () => {
+    setClock(() => new Date('2026-11-15T10:00:00').getTime())
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    await store.replaceDayEvents('2026-11-09', punchesToEvents([{ in: 28800, out: 57600 }]))
+    await store.replaceDayEvents('2026-11-01', punchesToEvents([{ in: 28800, out: 32400 }]))
+    await store.clockIn(28800)
+    store.historyCache = null
+
+    const days = await store.loadDaysForExport('2026-11-09', '2026-11-15')
+    expect(Object.keys(days).sort()).toEqual(['2026-11-09', '2026-11-15'])
+    expect(days['2026-11-15'].events).toEqual([{ type: 'in', t: 28800 }])
+    expect(store.historyCache).toBeNull()
+
+    const older = await store.loadDaysForExport('2026-11-01', '2026-11-02')
+    expect(Object.keys(older)).toEqual(['2026-11-01'])
+  })
+})

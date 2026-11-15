@@ -5,6 +5,7 @@ import { useScrollLock } from '@/components/ui/useScrollLock'
 import CalendarGrid from './CalendarGrid.vue'
 import DayEventList from './DayEventList.vue'
 import EditTimesDialog from './EditTimesDialog.vue'
+import ShareDialog from './ShareDialog.vue'
 import { lastFourWeeksRange, ymd, secondsSinceMidnight } from '@/domain/date'
 
 const emit = defineEmits<{ close: [] }>()
@@ -56,6 +57,15 @@ const isSelectedToday = computed(() => selectedDate.value === todayYmd.value)
 const canEdit = computed(() => !!selectedDate.value && selectedDate.value <= todayYmd.value)
 
 const editOpen = ref(false)
+const shareOpen = ref(false)
+const gridFrom = computed(() => ymd(range.value.start))
+const gridTo = computed(() => ymd(range.value.end))
+
+/** From the share dialog's faulty-day list: show that day so it can be fixed. */
+function onJump(date: string) {
+  shareOpen.value = false
+  selectedDate.value = date
+}
 
 async function onEditClose() {
   editOpen.value = false
@@ -72,12 +82,27 @@ async function onEditClose() {
     <div class="bg-surface border border-border-2 w-full max-w-md mx-4 max-h-[85dvh] flex flex-col">
       <div class="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
         <span class="font-mono text-xs tracking-widest text-text-dim uppercase">Calendar</span>
-        <button
-          type="button"
-          class="font-mono text-text-faint hover:text-text text-lg leading-none transition-colors"
-          aria-label="Close"
-          @click="emit('close')"
-        >×</button>
+        <div class="flex items-center gap-4">
+          <button
+            type="button"
+            class="text-text-faint hover:text-text transition-colors"
+            aria-label="Share"
+            title="Share working times"
+            @click="shareOpen = true"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
+              <polyline points="16 6 12 2 8 6" />
+              <line x1="12" y1="2" x2="12" y2="15" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="font-mono text-text-faint hover:text-text text-lg leading-none transition-colors"
+            aria-label="Close"
+            @click="emit('close')"
+          >×</button>
+        </div>
       </div>
 
       <div class="overflow-y-auto px-6 py-5 flex flex-col gap-6">
@@ -108,5 +133,12 @@ async function onEditClose() {
       </div>
     </div>
     <EditTimesDialog v-if="editOpen && selectedDate" :date="selectedDate" @close="onEditClose" />
+    <ShareDialog
+      v-if="shareOpen"
+      :selectable-from="gridFrom"
+      :selectable-to="gridTo"
+      @close="shareOpen = false"
+      @jump="onJump"
+    />
   </div>
 </template>
