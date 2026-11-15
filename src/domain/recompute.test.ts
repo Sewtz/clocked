@@ -154,19 +154,18 @@ describe('recompute', () => {
   })
 
   it('gap >= break1_duration + break2_duration satisfies both breaks', () => {
-    // Punch [0..21600] closed, gap 21600..24600 (3000s >= 1800+900=2700), then open punch.
-    // gap >= break1_dur + break2_dur -> satisfies both.
+    // Punch [0..21600], gap 21600..24600 (3000s >= 1800+900=2700), punch [24600..35400].
+    // The day reaches 9h (21600 + 10800 = 32400 >= both triggers), so the gap holds both (#18).
     // breakSeconds = 1800 + 900 = 2700 (both fitted into the gap).
-    // workedGross = 21600; fitted breaks do not reduce it (#15).
-    // workedSeconds = 21600.
+    // Fitted breaks do not reduce worked time (#15): workedSeconds = 32400.
     const r = recompute([
       { in: 0, out: 21600 },
-      { in: 24600 },
-    ], S, 24600)
+      { in: 24600, out: 35400 },
+    ], S, 35400)
     expect(r.breakState).toBe('running')
     expect(r.breakEndsAtMs).toBeUndefined()
     expect(r.breakSeconds).toBe(2700)
-    expect(r.workedSeconds).toBe(21600)
+    expect(r.workedSeconds).toBe(32400)
     const mbs = r.segments.filter(s => s.type === 'mandatory-break')
     expect(mbs).toHaveLength(2)
     const mb1 = mbs.find(s => s.breakIndex === 0)!
@@ -183,18 +182,18 @@ describe('recompute', () => {
   it('two gaps, first satisfies break1, second satisfies break2', () => {
     // Punch [0..21600], gap 21600..24000 (2400s >= 1800) satisfies break1.
     // Punch [24000..30000], gap 30000..31200 (1200s >= 900) satisfies break2.
+    // Punch [31200..36000]: the day reaches 9h (21600 + 6000 + 4800 = 32400), so break2 applies (#18).
     // breakSeconds = 1800 + 900 = 2700 (each fitted into its gap).
-    // workedGross = 21600 + 6000 = 27600; fitted breaks do not reduce it (#15).
-    // workedSeconds = 27600.
+    // Fitted breaks do not reduce worked time (#15): workedSeconds = 32400.
     const r = recompute([
       { in: 0, out: 21600 },
       { in: 24000, out: 30000 },
-      { in: 31200 },
-    ], S, 31200)
+      { in: 31200, out: 36000 },
+    ], S, 36000)
     expect(r.breakState).toBe('running')
     expect(r.breakEndsAtMs).toBeUndefined()
     expect(r.breakSeconds).toBe(2700)
-    expect(r.workedSeconds).toBe(27600)
+    expect(r.workedSeconds).toBe(32400)
     const mbs = r.segments.filter(s => s.type === 'mandatory-break')
     expect(mbs).toHaveLength(2)
     const mb1 = mbs.find(s => s.breakIndex === 0)!
@@ -207,6 +206,36 @@ describe('recompute', () => {
     expect(gbs).toHaveLength(2)
     expect(gbs[0]).toEqual({ type: 'gap', startSec: 23400, endSec: 24000 })
     expect(gbs[1]).toEqual({ type: 'gap', startSec: 30900, endSec: 31200 })
+  })
+
+  it('a gap long enough for both breaks only holds break2 once the day reaches 9h (#18)', () => {
+    // Reported case: 08:00-13:00, 60 min gap, 14:00-15:06 -> 6h06 worked.
+    // break1 (6h trigger) applies and fits the gap; break2 (9h trigger) does not apply.
+    const r = recompute([
+      { in: 28800, out: 46800 },
+      { in: 50400, out: 54360 },
+    ], S, 54360)
+    expect(r.workedSeconds).toBe(21960)
+    expect(r.breakSeconds).toBe(1800)
+    const mbs = r.segments.filter(s => s.type === 'mandatory-break')
+    expect(mbs).toEqual([{ type: 'mandatory-break', startSec: 46800, endSec: 48600, breakIndex: 0 }])
+    expect(r.segments.filter(s => s.type === 'gap')).toEqual([{ type: 'gap', startSec: 48600, endSec: 50400 }])
+  })
+
+  it('a gap before the 6h trigger stays neutral until the day reaches 6h (#18)', () => {
+    // 08:00-12:00, 45 min gap, back at 12:45; still running.
+    const punches = [{ in: 28800, out: 43200 }, { in: 45900 }]
+    // 13:00: 4h15 worked -> no break applies yet, the whole gap is neutral.
+    const early = recompute(punches, S, 46800)
+    expect(early.breakSeconds).toBe(0)
+    expect(early.segments.filter(s => s.type === 'mandatory-break')).toHaveLength(0)
+    // 14:45: 6h worked -> break1 applies and is fitted into the earlier gap; no live break.
+    const later = recompute(punches, S, 53100)
+    expect(later.breakSeconds).toBe(1800)
+    expect(later.breakState).toBe('running')
+    expect(later.workedSeconds).toBe(21600)
+    expect(later.segments.filter(s => s.type === 'mandatory-break'))
+      .toEqual([{ type: 'mandatory-break', startSec: 43200, endSec: 45000, breakIndex: 0 }])
   })
 
   it('short gap = break1_duration satisfies break1 (>=), no mandatory break1', () => {
@@ -233,10 +262,10 @@ describe('recompute', () => {
   })
 
   it('total gaps >= combined break durations, no mandatory pauses', () => {
-    // Two gaps totalling 5800s > 2700. But now per-gap matching:
-    // gap1: 20000..22800 = 2800 >= 1800+900=2700 -> satisfies both.
-    // Actually gap1 is 2800 >= 2700 so it satisfies both break1 and break2.
-    // No mandatory pauses during work (they are fitted into the gap).
+    // Two gaps; gap1 20000..22800 = 2800s is long enough for both breaks.
+    // The day totals 20000 + 1200 + 9000 = 30200s: past the 6h trigger, below 9h.
+    // So only break1 applies and is fitted into gap1; break2 does not apply (#18).
+    // No mandatory pauses during work.
     const r = recompute([
       { in: 0, out: 20000 },
       { in: 22800, out: 24000 },
@@ -245,7 +274,8 @@ describe('recompute', () => {
     expect(r.breakState).toBe('running')
     expect(r.breakEndsAtMs).toBeUndefined()
     const mbs = r.segments.filter(s => s.type === 'mandatory-break')
-    expect(mbs).toHaveLength(2) // both breaks fitted into gap1
+    expect(mbs).toHaveLength(1) // only break1, fitted into gap1
+    expect(mbs[0]).toMatchObject({ breakIndex: 0, startSec: 20000, endSec: 21800 })
     const gbs = r.segments.filter(s => s.type === 'gap')
     expect(gbs.length).toBeGreaterThanOrEqual(2)
   })

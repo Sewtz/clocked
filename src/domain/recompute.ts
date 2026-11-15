@@ -61,14 +61,16 @@ let need1 = break1Dur > 0
         const fits: GapFit[] = []
         let remaining = g.duration
 
-        if (need1 && remaining >= break1Dur) {
+        // A break only applies once the day's worked time reaches its trigger (#18).
+        // A gap taken earlier still counts then (breaks may be taken in advance).
+        if (need1 && remaining >= break1Dur && workedGross >= b1Trigger) {
           fits.push({ breakIndex: 0, duration: break1Dur })
           gapFittedBreakSeconds += break1Dur
           remaining -= break1Dur
           break1SatisfiedByGap = true
           need1 = false
         }
-        if (!need1 && need2 && remaining >= break2Dur) {
+        if (!need1 && need2 && remaining >= break2Dur && workedGross >= b2Trigger) {
           fits.push({ breakIndex: 1, duration: break2Dur })
           gapFittedBreakSeconds += break2Dur
           remaining -= break2Dur
