@@ -8,6 +8,7 @@ import CalendarDialog from '@/components/CalendarDialog.vue'
 import FaultyDayView from '@/components/FaultyDayView.vue'
 
 const store = useClockStore()
+const isDemo = import.meta.env.VITE_DEMO === '1'
 const settingsOpen = ref(false)
 const calendarOpen = ref(false)
 
@@ -53,6 +54,7 @@ const todayLabel = computed(() =>
           :style="{ backgroundColor: statusColor }"
         />
         <span class="font-mono text-xs tracking-widest text-text-dim uppercase">TIMECLOCK</span>
+        <span v-if="isDemo" class="font-mono text-[10px] tracking-widest uppercase px-1.5 py-0.5 border border-break text-break">Demo</span>
       </div>
       <div class="flex items-center gap-4">
         <span class="font-mono text-xs text-text-faint">{{ todayLabel }}</span>
