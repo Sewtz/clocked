@@ -8,7 +8,7 @@ The detailed task specs (goal, files, approach, acceptance criteria, V&V, pitfal
 
 Clocking events can't be deleted. Deleting one event can leave a faulty sequence (e.g. `in, in, out`), which the pair-based model `punches: Array<{ in, out? }>` can't hold: an `out` without an `in` isn't storable at all.
 
-## Decisions (become ADR-035…038 in T8)
+## Decisions (become ADR-036…039 in T8; ADR-035 is the #15 fix)
 
 - A day is stored as a **flat, time-sorted list of events** `{ type: 'in' | 'out'; t }` (seconds since midnight). Stored order breaks ties at the same time.
 - Validity is **derived**: a sequence must start with `in` and alternate. A trailing `in` (still clocked in) is valid only for today.
