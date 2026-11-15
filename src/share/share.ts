@@ -49,6 +49,23 @@ export function fittingMailtoUrl(subject: string, draftText: SharePayload['draft
   return url
 }
 
+/** Save the CSV as a file (separate "Download CSV" action; not part of the share fallback). */
+export function downloadFile(file: File, doc: Document = document): void {
+  const url = URL.createObjectURL(file)
+  const a = doc.createElement('a')
+  a.href = url
+  a.download = file.name
+  a.style.display = 'none'
+  doc.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+export function csvFile(fileName: string, csv: string): File {
+  return new File([csv], fileName, { type: 'text/csv' })
+}
+
 export function browserShareEnv(): ShareEnv {
   return {
     navigator: typeof navigator === 'undefined' ? {} : navigator,
@@ -67,7 +84,7 @@ export function browserShareEnv(): ShareEnv {
 export async function shareExport(p: SharePayload, env: ShareEnv = browserShareEnv()): Promise<ShareResult> {
   const nav = env.navigator
   if (nav.share && nav.canShare) {
-    const file = new File([p.csv], p.fileName, { type: 'text/csv' })
+    const file = csvFile(p.fileName, p.csv)
     if (nav.canShare({ files: [file] })) {
       try {
         await nav.share({ files: [file], title: p.subject, text: p.text })

@@ -8,7 +8,7 @@ import {
   presetRange, buildExport, toCsv, toMailText, exportFileName, mailSubject, dur, balanceText,
   type DateRange, type ExportData, type RangePreset,
 } from '@/domain/export'
-import { shareExport, type ShareResult } from '@/share/share'
+import { shareExport, downloadFile, csvFile, type ShareResult } from '@/share/share'
 
 const props = defineProps<{
   /** Dates the calendar can jump to (its 4-week grid). */
@@ -86,6 +86,13 @@ async function share() {
   })
   if (result === 'shared') emit('close')
   else if (result === 'draft') status.value = 'Opened a mail draft with the table. If nothing happened, set up a default mail app.'
+}
+
+function downloadCsv() {
+  const d = data.value
+  if (!d) return
+  downloadFile(csvFile(exportFileName(d.range), toCsv(d)))
+  status.value = `Saved ${exportFileName(d.range)}.`
 }
 </script>
 
@@ -186,15 +193,21 @@ async function share() {
         <div v-if="status" class="font-mono text-xs text-text-dim" role="status">{{ status }}</div>
       </div>
 
-      <div class="flex justify-end gap-3 px-6 py-4 border-t border-border shrink-0">
+      <div class="flex flex-wrap justify-end gap-2 sm:gap-3 px-6 py-4 border-t border-border shrink-0">
         <button
           type="button"
-          class="font-mono text-xs tracking-widest uppercase px-5 py-2 border border-border-2 text-text-faint hover:text-text hover:border-text-faint transition-colors"
+          class="font-mono text-xs tracking-wider sm:tracking-widest uppercase px-3 sm:px-5 py-2 border border-border-2 text-text-faint hover:text-text hover:border-text-faint transition-colors"
           @click="emit('close')"
         >Cancel</button>
         <button
           type="button"
-          class="font-mono text-xs tracking-widest uppercase px-5 py-2 bg-work text-bg font-bold hover:bg-work-hi transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          class="font-mono text-xs tracking-wider sm:tracking-widest uppercase px-3 sm:px-5 py-2 border border-work text-work hover:bg-work/15 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          :disabled="!data || loading || !!rangeError"
+          @click="downloadCsv"
+        >Download CSV</button>
+        <button
+          type="button"
+          class="font-mono text-xs tracking-wider sm:tracking-widest uppercase px-3 sm:px-5 py-2 bg-work text-bg font-bold hover:bg-work-hi transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           :disabled="!data || loading || !!rangeError"
           @click="share"
         >Share</button>

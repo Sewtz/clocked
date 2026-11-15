@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { shareExport, fittingMailtoUrl, MAILTO_MAX_LENGTH, type ShareEnv, type SharePayload } from './share'
+import { shareExport, fittingMailtoUrl, downloadFile, csvFile, MAILTO_MAX_LENGTH, type ShareEnv, type SharePayload } from './share'
 
 const payload: SharePayload = {
   fileName: 'clocked_2026-11-09_2026-11-15.csv',
@@ -77,5 +77,22 @@ describe('fittingMailtoUrl', () => {
 
   it('encodes subject and body', () => {
     expect(fittingMailtoUrl('A & B', () => 'line 1\nline 2')).toBe('mailto:?subject=A%20%26%20B&body=line%201%0Aline%202')
+  })
+})
+
+describe('downloadFile', () => {
+  it('clicks a temporary download link for the CSV', () => {
+    const clicks: Array<{ href: string; download: string }> = []
+    const orig = HTMLAnchorElement.prototype.click
+    HTMLAnchorElement.prototype.click = function () { clicks.push({ href: this.href, download: this.download }) }
+    URL.createObjectURL = vi.fn(() => 'blob:clocked/1')
+    URL.revokeObjectURL = vi.fn()
+    try {
+      downloadFile(csvFile('clocked_2026-11-09_2026-11-15.csv', 'a;b'))
+    } finally {
+      HTMLAnchorElement.prototype.click = orig
+    }
+    expect(clicks).toEqual([{ href: 'blob:clocked/1', download: 'clocked_2026-11-09_2026-11-15.csv' }])
+    expect(document.querySelectorAll('a[download]')).toHaveLength(0)
   })
 })

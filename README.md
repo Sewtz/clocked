@@ -55,8 +55,8 @@ time across all sessions of the day.
 - **Share by email** — the share button in the calendar sends a period (this or
   last week/month, or any From–To range) as a CSV attachment plus a readable
   table in the mail body. On phones the share sheet opens with the file
-  attached; on desktop a mail draft with the table opens (no attachment). Faulty
-  days are flagged, not guessed.
+  attached; on desktop a mail draft with the table opens (no attachment).
+  **Download CSV** saves the file directly. Faulty days are flagged, not guessed.
 - **Daily reset at midnight** — the day is archived to the calendar and the
   clock-in button comes back.
 - **Fully local** — every entry lives in IndexedDB on your device. The app makes

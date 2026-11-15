@@ -102,3 +102,25 @@ test('faulty day: "Fix" jumps to it in the calendar', async ({ page }) => {
   await expect(page.getByRole('button', { name: '2026-11-11, faulty' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByTestId('faulty-day-list')).toContainText('Two clock-ins in a row')
 })
+
+test('"Download CSV" saves the CSV for the chosen range', async ({ page }) => {
+  await openAppAt(page, NOW)
+  await seedWeek(page)
+  await openShare(page)
+  await page.getByRole('button', { name: 'Last week' }).click()
+  await expect(page.getByTestId('share-worked')).toHaveText('08:00')
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Download CSV' }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe('clocked_2026-11-09_2026-11-15.csv')
+  const bytes = (await import('node:fs')).readFileSync((await download.path())!)
+  expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf])
+  const lines = bytes.toString('utf-8').replace(/^\uFEFF/, '').trimEnd().split('\r\n')
+  expect(lines).toHaveLength(1 + 7 + 1) // header, 7 days, TOTAL
+  expect(lines[1]).toBe('2026-11-09;Mon;ok;08:00;16:30;08:00;00:30;on target;480;30;0;in 08:00, out 12:00, in 12:30, out 16:30')
+  await expect(page.getByRole('status')).toContainText('Saved clocked_2026-11-09_2026-11-15.csv.')
+  await expect(page.getByRole('dialog', { name: 'Share working times' })).toBeVisible()
+})
+

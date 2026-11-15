@@ -10,7 +10,12 @@ import { punchesToEvents } from '@/domain/events'
 import ShareDialog from './ShareDialog.vue'
 
 const shareExport = vi.fn()
-vi.mock('@/share/share', () => ({ shareExport: (...args: unknown[]) => shareExport(...args) }))
+const downloadFile = vi.fn()
+vi.mock('@/share/share', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/share/share')>()),
+  shareExport: (...args: unknown[]) => shareExport(...args),
+  downloadFile: (...args: unknown[]) => downloadFile(...args),
+}))
 
 // Wednesday 18 Nov 2026, 12:00 -> "last week" = Mon 9 .. Sun 15 Nov
 const NOW = new Date(2026, 10, 18, 12, 0)
@@ -21,6 +26,7 @@ beforeEach(async () => {
   await clearWorktime()
   setClock(() => NOW.getTime())
   shareExport.mockReset()
+  downloadFile.mockReset()
   const store = useClockStore()
   store.settings = { ...DEFAULT_SETTINGS }
   await store.replaceDayEvents('2026-11-09', punchesToEvents([{ in: 28800, out: 43200 }, { in: 45000, out: 59400 }])) // 8h
@@ -128,5 +134,23 @@ describe('ShareDialog', () => {
     await btn.trigger('click')
     await flushPromises()
     expect(w.emitted('close')).toBeFalsy()
+  })
+
+  it('"Download CSV" saves the CSV for the range without sharing', async () => {
+    const w = await mountLastWeek()
+    await w.findAll('button').find(b => b.text() === 'Download CSV')!.trigger('click')
+    const file: File = downloadFile.mock.calls[0][0]
+    expect(file.name).toBe('clocked_2026-11-09_2026-11-15.csv')
+    expect(file.type).toBe('text/csv')
+    expect(await file.text()).toContain('2026-11-11;Wed;faulty')
+    expect(shareExport).not.toHaveBeenCalled()
+    expect(w.text()).toContain('Saved clocked_2026-11-09_2026-11-15.csv.')
+  })
+
+  it('"Download CSV" is disabled for a reversed range', async () => {
+    const w = await mountDialog()
+    await w.find('input[aria-label="To"]').setValue('2026-11-01')
+    await flushPromises()
+    expect(w.findAll('button').find(b => b.text() === 'Download CSV')!.attributes('disabled')).toBeDefined()
   })
 })
