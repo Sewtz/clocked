@@ -40,10 +40,18 @@ time across all sessions of the day.
 - **Next-milestone hint** shows the upcoming auto-break and how far away it is.
 - **Timeline** visualizes the day as colored segments (Work / Brk / Gap) with
   their start→end times and durations. Tap it to open the **Edit times** dialog,
-  where you can correct any punch in/out time directly — useful if you forgot to
-  clock in right away.
-- **Daily reset at midnight** — yesterday's entry is discarded, the clock-in
-  button comes back.
+  where you can change, add or delete any clock-in/clock-out — useful if you
+  forgot to clock in right away or clocked twice.
+- **Faulty days are flagged, not guessed.** If the clock-ins and clock-outs of a
+  day don't alternate (e.g. two clock-ins in a row after a deletion), the day is
+  saved as-is and marked: the main screen shows *Times need fixing* with the
+  offending event and a **Fix times** button, and no totals are shown until it is
+  corrected.
+- **Calendar** of the last four weeks: green dots for recorded days, red dots
+  for faulty ones. Select a day to see its segments and totals, and use
+  **Edit day** to correct a past day or record one you forgot.
+- **Daily reset at midnight** — the day is archived to the calendar and the
+  clock-in button comes back.
 - **Fully local** — every entry lives in IndexedDB on your device. The app makes
   no network calls at runtime and works in airplane mode after first install.
 - **Configurable daily target and automatic breaks** are editable in Settings.

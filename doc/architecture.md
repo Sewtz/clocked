@@ -11,8 +11,10 @@
 │   - SettingsDialog (gear icon, break config)   │
 │   - CalendarDialog (calendar icon, 4-week grid, │
 │     day event list)                            │
-│   - EditTimesDialog (click Timeline, edit any  │
-│     in/out via OS time picker)                 │
+│   - EditTimesDialog (day editor: edit, add,    │
+│     delete events of any day; OS time picker)  │
+│   - FaultyDayView  (today's events don't       │
+│     alternate: issue list + Fix times)         │
 │   - StatsGrid / DailyTargetBar / Timeline      │
 │   - BreakBanner / MilestoneHint                │
 │   - ui/NumberInput / ui/Toggle / ui/useScrollLock │
@@ -20,13 +22,15 @@
                 │  reads / writes
 ┌───────────────▼──────────────────────────────┐
 │  Pinia store (single source of truth)         │
-│   - today's worktime (in/out punches)         │
+│   - today's worktime (in/out event list)      │
 │   - settings (persistent key-value)           │
-│   - getters: workedMs, segments, breakMs,     │
+│   - getters: analysis, isFaulty, workedMs,    │
+│     segments, breakMs,                        │
 │     remainingMs, overtimeMs, workPercent,     │
 │     daySpanMs, nextMilestone                  │
 │   - recompute: derives segments (work/gap/    │
-│     break) from punches + settings, injects   │
+│     break) from the punches of a valid event  │
+│     list + settings, injects                  │
 │     mandatory pauses                          │
 └───────────────┬──────────────────────────────┘
                 │  persists
@@ -40,7 +44,8 @@
 ┌───────────────▼──────────────────────────────┐
 │  Debug API (window.__clocked)                 │
 │   - injectable clock (tickTo/tickForward)     │
-│   - setPunches, setSettings, simulateMidnight │
+│   - setEvents, setHistoryDay, setSettings,    │
+│     simulateMidnight                          │
 │   - writes through to real IDB                │
 └───────────────────────────────────────────────┘
 ```
@@ -49,7 +54,7 @@ No router, no backend, no network calls at runtime. Single SPA bundle served fro
 
 ## Data model
 
-### IndexedDB stores (DB `clocked`, version 3)
+### IndexedDB stores (DB `clocked`, version 4)
 
 Three object stores: `settings` (single persistent record), `worktime` (single day record), `history` (archived days).
 
@@ -74,29 +79,40 @@ const DEFAULT_SETTINGS: Settings = { /* values above */ }
 #### `worktime` (key `'worktime'`, single day, reset after midnight)
 
 ```ts
+interface PunchEvent {
+  type: 'in' | 'out'
+  t: number                            // seconds since local midnight, 0–86399
+}
 interface Worktime {
   date: string                         // 'YYYY-MM-DD', local day of the record
-  punches: Array<{ in: number; out?: number }>
+  events: PunchEvent[]                 // sorted by t; stored order breaks ties
 }
 ```
 
 - `date` is the local calendar day when the record was created (used for rollover detection).
-- `in` / `out` are **seconds since midnight** of that local day.
-- An open punch has `out === undefined` (the user is currently clocked in).
-- New punches are appended at the end.
+- `t` is **seconds since midnight** of that local day.
+- The list is kept sorted by `t`. Clock-in/out append; edits insert at the right place (ADR-036).
+- Whether the day is valid is **derived**, never stored (see *Event sequences and faulty days*).
 - On midnight rollover, the record is archived to the `history` store (see below) and cleared.
+
+#### Event sequences and faulty days
+
+`analyse(events, { allowOpen })` (`src/domain/events.ts`) classifies a day:
+
+- **valid** — starts with `in` and alternates `in`/`out`. A trailing `in` (still clocked in) is valid only when `allowOpen` is true, i.e. for today. A valid day yields `punches: Array<{ in, out? }>` (the pairs) for `recompute()`.
+- **faulty** — anything else, with one issue per offending event: `starts-with-out`, `double-in`, `double-out`, `open-past-day` (a past day ending clocked in), `unsorted` (defensive; the UI keeps lists sorted).
+
+A faulty day is **saved as-is and flagged** (ADR-037): no worked time, breaks or segments; clock-in/out are blocked; `viewState` is `faulty`. The user fixes it in the day editor. An empty event list means no day: today returns to the clock-in view and a past day is deleted from `history`.
 
 #### `history` (key `'YYYY-MM-DD'`, persistent, archived at rollover)
 
 ```ts
-interface HistoryRecord extends Worktime {
-  date: string                         // 'YYYY-MM-DD' — same shape as worktime
-  punches: Array<{ in: number; out?: number }>
-}
+type HistoryRecord = Worktime          // { date: 'YYYY-MM-DD', events: PunchEvent[] }
 ```
 
-- Values are raw `Worktime` records (date + punches) — **no aggregates**; recompute is at view time with current settings, so settings changes retroactively affect how historic days are displayed.
-- On midnight rollover, `reset()` archives today's worktime: any open punch is first closed at `out = 86399` (23:59:59), then the record is written keyed by its `date`. The live `worktime` record is then cleared.
+- Values are raw `Worktime` records (date + events) — **no aggregates**; recompute is at view time with current settings, so settings changes retroactively affect how historic days are displayed.
+- On midnight rollover, `reset()` archives today's worktime: a **valid** day that is still open gets an `out` event at 86399 (23:59:59) first; a **faulty** day is archived unchanged. The record is written keyed by its `date`, then the live `worktime` record is cleared.
+- Past days can be edited from the calendar (ADR-038) via `store.replaceDayEvents(date, events)`.
 - Today's live worktime is overlaid onto the history cache at view time so the calendar shows today's dot and live segments.
 
 ### Day boundary
@@ -104,16 +120,17 @@ interface HistoryRecord extends Worktime {
 - "Today" = local calendar day. Compare the persisted worktime date against the current local date.
 - On app focus / visibility change / tick: if the worktime record is from a previous day, clear it and reset to the clock-in view.
 
-### Why in/out punches (not segments)
+### Why a flat event list (not pairs, not segments)
 
-- Simpler mental model: the user clocks in and out; each pair is one session.
+- It stores exactly what the user did: each clock-in and clock-out is one event (ADR-036). Any sequence — including a faulty one after a deletion — can be stored, and validity is computed.
+- Pairs ("punches") are derived from a valid list and only exist in memory, as the input to `recompute()`.
 - Breaks are **auto-derived** from gaps between punches and configurable threshold settings — they are not stored explicitly.
 - Worked time = Σ(out − in) for each closed punch, minus mandatory pauses injected *during* work. Breaks fitted into a gap do not reduce worked time, because the gap was never worked (ADR-035).
 - The `Recomputed` type (returned by `recompute()`) includes a `segments: DerivedSegment[]` array for UI rendering (timeline strip, stats grid). Each segment is typed `'work'`, `'gap-break'`, or `'mandatory-break'` and carries a start/end seconds-since-midnight. Segments are not stored — they are derived on every read.
 
 ## Break derivation algorithm
 
-Input: `punches` (in/out seconds-since-midnight) + `settings` + `nowSeconds` (seconds since midnight).
+Input: `punches` (in/out pairs derived by `analyse()` from a **valid** event list; faulty days are never recomputed) + `settings` + `nowSeconds` (seconds since midnight).
 
 1. Compute `workedGross = Σ(out_i − in_i)` over closed punches; an open punch counts `now − in`.
 2. Compute gaps = `in_{i+1} − out_i` between consecutive punches.
@@ -147,11 +164,11 @@ Breaks fire exactly once each per day. After break2 is satisfied, no more breaks
 
 ### Clock in
 1. User taps the rectangular acid-green Clock In button on `ClockInView`.
-2. Store appends a new punch `{ in: nowSeconds }` (wall clock).
+2. Store inserts an event `{ type: 'in', t: nowSeconds }` (wall clock). Blocked while the day is faulty or on a mandatory break.
 3. UI switches to `RunningView`.
 
 ### Clock out
-- Set the last punch's `out = nowSeconds` (open punch closed).
+- Append `{ type: 'out', t: max(nowSeconds, last.t) }` — never before its `in`, even if the device clock went backwards. Blocked while the day is faulty.
 - UI switches back to `ClockInView` with a "clocked out" label and a Clock In button to resume.
 - The clocked-out view displays accumulated worked time ("Worked today"), stats, daily-target bar, and timeline. No Reset-day button — use `window.__clocked.clear()` in the console for development.
 
@@ -171,13 +188,26 @@ When the recompute algorithm introduces a mandatory pause:
 
 ### Midnight rollover
 
-- Detected on next tick / visibility change: if the worktime record `date` differs from the current local date, archive the previous day to the `history` store (open punch closed at 23:59:59) and clear worktime, returning to `ClockInView`.
+- Detected on next tick / visibility change: if the worktime record `date` differs from the current local date, archive the previous day to the `history` store (a valid open day closed at 23:59:59; a faulty day unchanged) and clear worktime, returning to `ClockInView`.
+- `replaceDayEvents` runs the same check before saving, so an edit made after midnight but before the next tick archives yesterday first and writes to the right day.
+
+### Editing a day
+
+- `EditTimesDialog` takes a `date` (default today). It is opened from the Timeline (valid today), from **Fix times** on `FaultyDayView`, and from **Edit day** in the calendar (today and past days, including empty ones; never future days).
+- One row per event with an OS time picker and a delete button; an add row (in/out + time) inserts sorted. Rows re-sort when a time change is committed.
+- `analyse()` runs live: offending rows are highlighted with the issue text. Saving is **always** allowed; a faulty draft shows "Day will be saved as faulty".
+- Save calls `store.replaceDayEvents(date, events)`: events are clamped to 0–86399 and sorted; today writes the live `worktime`, a past date writes `history` and the calendar cache; an empty list removes the day; future dates are ignored.
+
+### Faulty day (main screen)
+
+- `viewState.kind === 'faulty'` renders `FaultyDayView`: "Times need fixing", today's events with the issue on the offending one, no clock buttons, and **Fix times** (opens the editor). The header status dot turns red.
 
 ### Calendar dialog
 
 - A calendar icon in the top bar (between the date label and the gear) opens `CalendarDialog`, a modal styled identically to `SettingsDialog`.
-- `CalendarGrid` renders the last 4 calendar weeks (Mon–Sun, 28 cells); a green dot marks any day with punch data; today is outlined; the selected day is highlighted.
-- Clicking a day renders `DayEventList` below the grid: the full `recompute()` segments (work / gap / mandatory-break) with `HH:MM` start/end, durations, and daily totals. Historic days pass `nowSec = 86399`; today passes the live seconds-since-midnight so an open punch updates live.
+- `CalendarGrid` renders the last 4 calendar weeks (Mon–Sun, 28 cells); a green dot marks a valid day with events, a red dot a faulty day (open clock-in counts as valid only for today); today is outlined; the selected day is highlighted.
+- Clicking a day renders `DayEventList` below the grid: for a valid day, the full `recompute()` segments (work / gap / mandatory-break) with `HH:MM` start/end, durations, and daily totals; for a faulty day, the raw events with issue hints and "totals unavailable". Historic days pass `nowSec = 86399`; today passes the live seconds-since-midnight so an open punch updates live.
+- **Edit day** next to the selected date opens the day editor for that date (disabled for future days); the history range is reloaded when it closes.
 - The dialog body scrolls internally (`max-h-[85dvh]`); the app behind is scroll-locked via the `useScrollLock` composable (applied to Settings, EditTimes, and Calendar dialogs).
 
 ## PWA wiring
@@ -190,6 +220,7 @@ When the recompute algorithm introduces a mandatory pause:
 ## Persistence
 
 - IndexedDB via `idb`, three object stores: `settings` (key `'settings'`), `worktime` (key `'worktime'`), `history` (key `'YYYY-MM-DD'`).
+- **v3 → v4 upgrade** (ADR-039): inside the version-change transaction, every `worktime` and `history` record is rewritten from `{ punches }` to `{ events }` (`src/storage/migrate.ts`). Already-converted records are skipped; on failure the upgrade is aborted and the DB stays at v3.
 - On first boot (no settings record), write `DEFAULT_SETTINGS`.
 - Worktime is archived to `history` and cleared on midnight rollover.
 - No localStorage for entry data (size + eviction risk); localStorage may be used only for ephemeral UI state if needed.
@@ -198,6 +229,7 @@ When the recompute algorithm introduces a mandatory pause:
 
 A global `window.__clocked` object provides getters and mutation methods that write through to real IndexedDB. See `doc/plan/08-restructure-storage.md` for the full API surface. Key features:
 - An injectable clock (`src/domain/clock.ts`) lets the debug API set a mock "now" via `tickTo(sec)` / `tickForward(sec)` without touching the real system clock.
-- `setPunches([{in, out?}])` overwrites today's punches for testing arbitrary scenarios.
+- `setEvents([{type, t}])` overwrites today's events for testing arbitrary scenarios (faulty sequences allowed); `setHistoryDay(date, events)` writes or (with `[]`) deletes a past day.
+- `state.analysis` shows whether today's sequence is valid and lists its issues.
 - `simulateMidnight()` forces a rollover check.
 - `getHistory()` returns all archived records; `clearHistory()` wipes the history store.

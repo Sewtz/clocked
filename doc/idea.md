@@ -27,7 +27,7 @@ A single worker who already uses a physical / terminal-based clock-in system and
 
 ## Scope (in)
 
-- One worktime record per local calendar day with one or more in/out punches (seconds-since-midnight).
+- One worktime record per local calendar day, stored as a time-sorted list of clock-in/clock-out events (seconds-since-midnight).
 - Clock-in (big red button) + adjustment buttons (+1 / +5 / +10 min, moving the start earlier) + custom time via OS picker.
 - Clock-out and clock-back-in; worked time accumulated across sessions.
 - Live elapsed display (internally seconds, displayed `HH:MM`).
@@ -37,16 +37,17 @@ A single worker who already uses a physical / terminal-based clock-in system and
   - Breaks derived from gaps between punches + mandatory pauses when gaps are insufficient.
 - Break overlay: countdown + auto-resume.
 - Edit clock-in time after logging (recomputes break eligibility from the new start).
+- Day editor for today and past days: edit, add and delete clock events.
+- Faulty days (e.g. two clock-ins in a row) are saved, flagged on the main screen and in the calendar, and get no totals or clocking until the user fixes them.
 - Configurable daily target and daily limit (stored, not yet surfaced in UI).
 - Reset.
-- Automatic midnight reset; previous day's worktime is discarded.
+- Automatic midnight reset; the previous day is archived to history (calendar view of the last 4 weeks).
 - Fully local, installable on Android and iOS, offline-capable.
 - Always-on developer debug API (`window.__clocked`) for testing time scenarios in the browser console.
 - Persistent settings store (survives midnight).
 
 ## Scope (out, for now)
 
-- Any history beyond today. Past days are deleted at midnight rollover.
 - Export / import of entries.
 - Multi-user / shared data.
 - Any backend, sync, or network dependency.
