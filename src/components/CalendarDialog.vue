@@ -44,6 +44,13 @@ function onSelect(ymdStr: string) {
 }
 
 const todayYmd = computed(() => ymd(today.value))
+
+/** "Tuesday, 10 Nov 2026" for the selected day (same style as the app header). */
+const selectedLabel = computed(() => {
+  if (!selectedDate.value) return ''
+  const [y, m, d] = selectedDate.value.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString([], { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })
+})
 const isSelectedToday = computed(() => selectedDate.value === todayYmd.value)
 // Today and past days are editable (including empty ones); future days are not.
 const canEdit = computed(() => !!selectedDate.value && selectedDate.value <= todayYmd.value)
@@ -82,7 +89,7 @@ async function onEditClose() {
         />
         <div class="flex flex-col gap-3">
           <div class="flex items-center justify-between">
-            <span class="font-mono text-xs tracking-widest text-text-dim uppercase">{{ selectedDate ?? '' }}</span>
+            <span class="font-mono text-xs tracking-widest text-work uppercase" data-testid="selected-day-label">{{ selectedLabel }}</span>
             <button
               type="button"
               class="font-mono text-[10px] tracking-widest uppercase px-3 py-1 border border-border-2 text-text-dim hover:text-text hover:border-text-faint transition-colors disabled:opacity-30 disabled:cursor-not-allowed"

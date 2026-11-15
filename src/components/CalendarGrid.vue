@@ -59,15 +59,17 @@ const cells = computed(() => {
       :key="cell.ymd"
       type="button"
       class="aspect-square flex flex-col items-center justify-center border transition-colors"
-      :class="[
-        cell.isToday ? 'border-text-dim' : 'border-border',
-        cell.isSelected ? 'bg-surface-2' : 'bg-surface',
-      ]"
+      :class="cell.isSelected
+        ? 'border-2 border-work bg-work/15'
+        : [cell.isToday ? 'border-text-dim' : 'border-border hover:border-border-2', 'bg-surface']"
       :aria-label="cell.status === 'faulty' ? `${cell.ymd}, faulty` : cell.ymd"
       :aria-pressed="cell.isSelected"
       @click="emit('select', cell.ymd)"
     >
-      <span class="font-mono text-xs text-text-dim">{{ cell.date.getDate() }}</span>
+      <span
+        class="font-mono text-xs"
+        :class="cell.isSelected ? 'text-work font-bold' : 'text-text-dim'"
+      >{{ cell.date.getDate() }}</span>
       <span
         v-if="cell.status !== 'none'"
         class="w-1.5 h-1.5 rounded-full mt-1"

@@ -66,7 +66,8 @@ describe('CalendarGrid', () => {
     })
     const selected = wrapper.find('button[aria-label="2026-08-18"]')
     expect(selected.attributes('aria-pressed')).toBe('true')
-    expect(selected.classes()).toContain('bg-surface-2')
+    expect(selected.classes()).toEqual(expect.arrayContaining(['border-2', 'border-work', 'bg-work/15']))
+    expect(selected.find('span').classes()).toEqual(expect.arrayContaining(['text-work', 'font-bold']))
     await selected.trigger('click')
     expect(wrapper.emitted('select')).toEqual([['2026-08-18']])
   })
@@ -114,5 +115,15 @@ describe('CalendarGrid', () => {
     })
     expect(wrapper.find('button[aria-label="2026-08-18, faulty"]').exists()).toBe(true)
     expect(wrapper.find('button[aria-label="2026-08-19"] [data-status]').attributes('data-status')).toBe('valid')
+  })
+
+  it('marks only the selected cell with the accent border, also when it is today', () => {
+    const wrapper = mount(CalendarGrid, {
+      props: { today: new Date(2026, 7, 19, 12, 0), history: {}, selectedDate: '2026-08-19' },
+    })
+    const accented = wrapper.findAll('button').filter(b => b.classes().includes('border-work'))
+    expect(accented.map(b => b.attributes('aria-label'))).toEqual(['2026-08-19'])
+    // An unselected day keeps the plain border
+    expect(wrapper.find('button[aria-label="2026-08-18"]').classes()).toContain('border-border')
   })
 })
