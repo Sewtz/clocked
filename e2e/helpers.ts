@@ -55,3 +55,8 @@ export async function editorRows(page: Page) {
   }
   return out
 }
+
+/** Guard: the runner's zone must match the browser's, or every wall-clock time is shifted. */
+if (new Date('2026-07-01T12:00:00Z').getHours() !== 14) {
+  throw new Error(`e2e: test runner is not in Europe/Berlin (TZ=${process.env.TZ}); see playwright.config.ts`)
+}
