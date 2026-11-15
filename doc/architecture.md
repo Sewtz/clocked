@@ -188,7 +188,7 @@ When the recompute algorithm introduces a mandatory pause:
 
 ### Midnight rollover
 
-- Detected on next tick / visibility change: if the worktime record `date` differs from the current local date, archive the previous day to the `history` store (a valid open day closed at 23:59:59; a faulty day unchanged) and clear worktime, returning to `ClockInView`.
+- Detected on app start (`init`) and when the app becomes visible again (`visibilitychange`) — **not** on the 1 s tick. The intended use is the installed PWA on a phone, which is hidden/locked overnight, so the check runs when it is reopened. A desktop browser tab left in the foreground across midnight keeps showing the previous day until it is hidden and shown again or reloaded; this is accepted (ADR-041). If the worktime record `date` differs from the current local date, archive the previous day to the `history` store (a valid open day closed at 23:59:59; a faulty day unchanged) and clear worktime, returning to `ClockInView`.
 - `replaceDayEvents` runs the same check before saving, so an edit made after midnight but before the next tick archives yesterday first and writes to the right day.
 
 ### Editing a day
