@@ -114,7 +114,7 @@ Cases:
 ### 6. Calendar component tests
 
 - `CalendarGrid` renders exactly 28 cells (4 Mon–Sun weeks), green dot per valid day, red dot (and `, faulty` label) per faulty day, open day valid only today, today outlined, selection highlighted, `select` emitted with the YMD.
-- `DayEventList` renders recompute segments (work/gap/mandatory-break) with `HH:MM` start/end and durations, plus daily totals; open punches show a live end time (today only); faulty days list raw events with issue hints and no totals.
+- `DayEventList` renders a day summary above the events (Worked, Breaks, Overtime/Undertime/On target, Remaining for today, `—` when faulty, hidden when empty) and the recompute segments (work/gap/mandatory-break) with `HH:MM` start/end and durations; open punches show a live end time (today only); faulty days list raw events with issue hints and no totals.
 - `CalendarDialog` loads history on mount, renders the grid + selected-day event list, closes on backdrop/×, and locks body scroll while mounted; **Edit day** is disabled for future dates and opens the editor otherwise; fixing a faulty past day turns its dot green.
 - `useScrollLock` locks `document.body.style.overflow` on mount and restores it on unmount.
 

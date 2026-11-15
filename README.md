@@ -48,7 +48,9 @@ time across all sessions of the day.
   offending event and a **Fix times** button, and no totals are shown until it is
   corrected.
 - **Calendar** of the last four weeks: green dots for recorded days, red dots
-  for faulty ones. Select a day to see its segments and totals, and use
+  for faulty ones. Select a day to see at a glance how long you worked, your
+  breaks and your over-/undertime against the daily target, followed by the
+  day's segments. Use
   **Edit day** to correct a past day or record one you forgot.
 - **Daily reset at midnight** — the day is archived to the calendar and the
   clock-in button comes back.
