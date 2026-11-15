@@ -49,7 +49,9 @@ pnpm dev          # Vite dev server
 pnpm build        # type-check + production build (emits dist/)
 pnpm preview      # serve dist/ locally for SW testing
 pnpm lint         # eslint (flat config)
-pnpm typecheck    # vue-tsc --noEmit
+pnpm typecheck    # vue-tsc --noEmit (app) + tsc (e2e)
+pnpm test         # vitest unit/component/store/storage suites
+pnpm test:e2e     # Playwright scenarios against the production build (port 4175)
 ```
 
 Required order before committing a change: **lint -> typecheck -> build**.
@@ -61,8 +63,9 @@ The full V&V procedure lives in `doc/test-vnv-strategy.md`. At minimum, after an
 1. `pnpm lint` — no new lint errors
 2. `pnpm typecheck` — `vue-tsc --noEmit` clean
 3. `pnpm build` — production build succeeds, emits `dist/`
-4. `pnpm test` — unit tests pass (once a test runner is wired up)
-5. `pnpm preview` + manual PWA checks: installable, offline-capable, timer survives screen lock, entries persist after reload
+4. `pnpm test` — unit tests pass
+5. `pnpm test:e2e` — end-to-end scenarios pass (real browser, IndexedDB, service worker)
+6. `pnpm preview` + manual checks that need a real device: add-to-home-screen, native time picker, timer survives screen lock
 
 If a change touches storage, the data model, or the service worker, also run the storage/SW-specific checks in `doc/test-vnv-strategy.md`. Do not declare a task done until these pass.
 

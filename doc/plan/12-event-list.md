@@ -1,6 +1,6 @@
 # WP12 — Event-list punch model (add/delete events, faulty days)
 
-**Status:** implemented (T1–T8); manual V&V (T9, #14) pending · **Epic:** [#5](https://github.com/Sewtz/clocked/issues/5) · **Branch:** `feat/delete-punches`
+**Status:** implemented (T1–T8); T9 (#14) automated as Playwright scenarios (`pnpm test:e2e`), device-only checks pending · **Epic:** [#5](https://github.com/Sewtz/clocked/issues/5) · **Branch:** `feat/delete-punches`
 
 The detailed task specs (goal, files, approach, acceptance criteria, V&V, pitfalls) live in the GitHub issues. This file keeps the context and decisions so they stay in the repo; see the issues for the task details.
 

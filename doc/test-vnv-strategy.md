@@ -118,6 +118,22 @@ Cases:
 - `CalendarDialog` loads history on mount, renders the grid + selected-day event list, closes on backdrop/×, and locks body scroll while mounted; **Edit day** is disabled for future dates and opens the editor otherwise; fixing a faulty past day turns its dot green.
 - `useScrollLock` locks `document.body.style.overflow` on mount and restores it on unmount.
 
+### 7. End-to-end scenarios (Playwright, `pnpm test:e2e`)
+
+Replay typical usage against the **production build** in real Chromium (desktop + Pixel 7 profile): real IndexedDB, real service worker. `playwright.config.ts` builds into `dist-e2e/` and serves it on port 4175, so it never touches `dist/` or a running `pnpm preview`. Each test gets a fresh browser context (empty database). The timezone is pinned to `Europe/Berlin`; the browser clock is frozen with `page.clock.install` and moved with `fastForward` (due timers fire once — like a phone waking up).
+
+| File | Scenarios |
+| --- | --- |
+| `e2e/workday.e2e.ts` | lunch day totals + timeline; running timer survives reload; mandatory break banner and resume |
+| `e2e/editing.e2e.ts` | delete → faulty view (survives reload) → Fix times → totals back; correct a late clock-in; delete everything → clock-in screen; seeded faulty day |
+| `e2e/calendar.e2e.ts` | midnight archive → calendar; forgot to clock out → 23:59; faulty day archived as-is → fixed from calendar; record a forgotten day; future locked; delete a past day; today live |
+| `e2e/upgrade.e2e.ts` | real v3 DB with `{ punches }` on the same origin → v4 with `{ events }`, UI totals correct |
+| `e2e/offline.e2e.ts` | reload offline after first visit; manifest is installable |
+
+First-time setup on Linux/WSL: `pnpm exec playwright install chromium` and the system libraries (`sudo apt-get install -y libnss3 libnspr4 libasound2t64` on Ubuntu 24.04, or `pnpm exec playwright install-deps chromium`). Debug with `pnpm test:e2e:ui` or the trace link printed on failure.
+
+The manual checks below remain for what automation can't cover: add-to-home-screen on real Android/iOS devices, the native OS time picker, and real screen lock / background behaviour on iOS.
+
 ## Manual V&V (run after any change, at minimum after storage/SW/UI changes)
 
 Run with `pnpm preview` (serves on `localhost`, so the real SW registers):
@@ -174,7 +190,8 @@ pnpm lint      # 1. eslint (flat config)
 pnpm typecheck # 2. vue-tsc --noEmit
 pnpm build     # 3. production build -> dist/
 pnpm test      # 4. unit + component + store + storage + debug suites
-pnpm preview   # 5. manual V&V above
+pnpm test:e2e  # 5. end-to-end scenarios (Playwright, production build)
+pnpm preview   # 6. manual V&V above (device-only checks)
 ```
 
-`lint -> typecheck -> build` is mandatory before every commit. `test` and the manual `preview` V&V are mandatory before declaring a feature done.
+`lint -> typecheck -> build` is mandatory before every commit. `test`, `test:e2e` and the manual `preview` V&V are mandatory before declaring a feature done.
