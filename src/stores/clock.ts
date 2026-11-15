@@ -201,7 +201,11 @@ export const useClockStore = defineStore('clock', {
      * Future dates are ignored. Faulty sequences are stored as-is (flagged via analyse).
      */
     async replaceDayEvents(date: string, events: readonly PunchEvent[]) {
-      const today = todayString(new Date(now()))
+      // Archive a live record left over from before midnight first, so "today"
+      // and the live worktime agree before we decide where to write.
+      this.now = now()
+      await this.checkRollover()
+      const today = todayString(new Date(this.now))
       if (date > today) return
       const normalised = normaliseEvents(events)
 

@@ -689,3 +689,17 @@ describe('clockOut ordering', () => {
     expect(store.worktime!.events[1]).toEqual({ type: 'out', t: store.worktime!.events[0].t })
   })
 })
+
+describe('replaceDayEvents after midnight with a stale live record', () => {
+  it('archives yesterday first, then writes the edited day to history', async () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    setClock(() => new Date('2026-07-20T09:00:00').getTime())
+    await store.clockIn(28800)
+    // App stayed open past midnight; no rollover check has run yet.
+    setClock(() => new Date('2026-07-21T00:10:00').getTime())
+    await store.replaceDayEvents('2026-07-20', punchesToEvents([{ in: 28800, out: 61200 }]))
+    expect(store.worktime).toBeNull()
+    expect((await getHistoryDay('2026-07-20'))!.events).toEqual(punchesToEvents([{ in: 28800, out: 61200 }]))
+  })
+})

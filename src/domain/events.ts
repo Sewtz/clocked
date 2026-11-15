@@ -1,4 +1,13 @@
-import type { Analysis, AnalysisIssue, Punch, PunchEvent } from './types'
+import type { Analysis, AnalysisIssue, AnalysisIssueKind, Punch, PunchEvent } from './types'
+
+/** User-facing description of each issue kind (shared by editor, main view and calendar). */
+export const ISSUE_TEXT: Record<AnalysisIssueKind, string> = {
+  'starts-with-out': 'Day starts with a clock-out',
+  'double-in': 'Two clock-ins in a row',
+  'double-out': 'Two clock-outs in a row',
+  'open-past-day': 'Past day ends clocked in',
+  'unsorted': 'Earlier than the event before it',
+}
 
 export interface AnalyseOptions {
   /** A trailing `in` (still clocked in) is valid. True only for today. */

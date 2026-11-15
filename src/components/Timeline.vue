@@ -36,7 +36,11 @@ function segOpacity(type: string): number {
 }
 
 const span = computed(() => store.daySpanMs / 1000)
-const firstIn = computed(() => store.worktime?.events.find(e => e.type === 'in')?.t ?? 0)
+// Only valid days have segments (faulty days render nothing), so the first punch is the day start.
+const firstIn = computed(() => {
+  const a = store.analysis
+  return a?.status === 'valid' && a.punches.length > 0 ? a.punches[0].in : 0
+})
 const nowFmt = computed(() => fmtTime(span.value + firstIn.value))
 
 const trackSegs = computed(() =>
@@ -98,5 +102,5 @@ const trackSegs = computed(() =>
       </div>
     </div>
   </button>
-  <EditTimesDialog v-if="editOpen" @close="editOpen = false" />
+  <EditTimesDialog v-if="editOpen" :date="store.worktime?.date" @close="editOpen = false" />
 </template>

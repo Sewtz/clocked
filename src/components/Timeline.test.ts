@@ -62,4 +62,31 @@ describe('Timeline', () => {
     await dialog.vm.$emit('close')
     expect(wrapper.findComponent(EditTimesDialog).exists()).toBe(false)
   })
+
+  it('renders nothing for a faulty day', () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-21', events: [{ type: 'out', t: 28800 }, { type: 'in', t: 32400 }] }
+    store.now = 36000 * 1000
+    const wrapper = mount(Timeline)
+    expect(wrapper.text()).toBe('')
+  })
+
+  it('renders nothing for a day with no events', () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-21', events: [] }
+    const wrapper = mount(Timeline)
+    expect(wrapper.text()).toBe('')
+  })
+
+  it('passes the day being shown to the editor', async () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 28800, out: 32400 }]) }
+    store.now = 32400 * 1000
+    const wrapper = mount(Timeline)
+    await wrapper.find('button[aria-label="Edit times"]').trigger('click')
+    expect(wrapper.findComponent(EditTimesDialog).props('date')).toBe('2026-07-21')
+  })
 })

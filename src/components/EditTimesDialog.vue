@@ -3,10 +3,10 @@ import { ref, reactive, computed } from 'vue'
 import { useClockStore } from '@/stores/clock'
 import { useScrollLock } from '@/components/ui/useScrollLock'
 import { secToTimeInput, timeInputToSec } from '@/domain/format'
-import { analyse } from '@/domain/events'
+import { analyse, ISSUE_TEXT } from '@/domain/events'
 import { now } from '@/domain/clock'
 import { todayString, secondsSinceMidnight } from '@/domain/date'
-import type { AnalysisIssueKind, PunchEvent, PunchEventType } from '@/domain/types'
+import type { PunchEvent, PunchEventType } from '@/domain/types'
 
 const props = defineProps<{
   /** Day to edit (YYYY-MM-DD). Defaults to today. */
@@ -20,19 +20,12 @@ const today = todayString(new Date(now()))
 const date = props.date ?? today
 const isToday = date === today
 
-const ISSUE_TEXT: Record<AnalysisIssueKind, string> = {
-  'starts-with-out': 'Day starts with a clock-out',
-  'double-in': 'Two clock-ins in a row',
-  'double-out': 'Two clock-outs in a row',
-  'open-past-day': 'Past day ends clocked in',
-  'unsorted': 'Earlier than the event before it',
-}
-
 interface DraftEvent { id: number; type: PunchEventType; time: string }
 
 let nextId = 0
-const source: readonly PunchEvent[] = isToday
-  ? store.worktime?.events ?? []
+// The live record may still carry yesterday's date until the rollover check runs.
+const source: readonly PunchEvent[] = store.worktime?.date === date
+  ? store.worktime.events
   : store.historyCache?.[date]?.events ?? []
 const draft = reactive<DraftEvent[]>(
   source.map(e => ({ id: nextId++, type: e.type, time: secToTimeInput(e.t) })),
