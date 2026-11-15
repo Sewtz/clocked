@@ -209,3 +209,5 @@ pnpm preview   # 6. manual V&V above (device-only checks)
 ```
 
 `lint -> typecheck -> build` is mandatory before every commit. `test`, `test:e2e` and the manual `preview` V&V are mandatory before declaring a feature done.
+
+CI (`.github/workflows/ci.yml`, ADR-043) runs `lint`, `typecheck`, `test` and `test:e2e` on every pull request and before every deployment from `main`; a failing check blocks the deploy. On e2e failures, download the `playwright-report` artifact from the run and open it with `pnpm exec playwright show-report <dir>` (traces included).

@@ -5,6 +5,13 @@ import { defineConfig, devices } from '@playwright/test'
 // running `pnpm preview` (IndexedDB is per origin, so this port has its own data).
 const PORT = 4175
 
+// One timezone for both sides: the browser (timezoneId) and the Node test runner,
+// whose helpers build wall-clock times like `new Date('2026-11-16T08:00:00')`.
+// Without this the runner uses the machine's zone (UTC on CI) and every time is off.
+// Node picks up a TZ change at runtime; workers re-evaluate this config, so they match too.
+const TIMEZONE = 'Europe/Berlin'
+process.env.TZ = TIMEZONE
+
 export default defineConfig({
   testDir: 'e2e',
   testMatch: '**/*.e2e.ts',
@@ -15,7 +22,7 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     // Fixed zone so "midnight" and HH:MM assertions are deterministic.
-    timezoneId: 'Europe/Berlin',
+    timezoneId: TIMEZONE,
     locale: 'en-GB',
     trace: 'retain-on-failure',
   },

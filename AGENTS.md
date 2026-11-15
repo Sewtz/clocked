@@ -57,6 +57,8 @@ pnpm demo         # demo build on port 4176, pre-filled with an example week (on
 
 Required order before committing a change: **lint -> typecheck -> build**.
 
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, unit and e2e tests on every PR and gates the GitHub Pages deploy (`deploy.yml`) on them.
+
 ## Verification & validation (run after every implementation change)
 
 The full V&V procedure lives in `doc/test-vnv-strategy.md`. At minimum, after any code change:
