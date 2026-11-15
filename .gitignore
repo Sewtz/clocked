@@ -49,6 +49,7 @@ yarn-error.log*
 
 # playwright e2e
 /dist-e2e
+/dist-demo
 /test-results
 /playwright-report
 /blob-report

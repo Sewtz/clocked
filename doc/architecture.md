@@ -232,5 +232,6 @@ A global `window.__clocked` object provides getters and mutation methods that wr
 - An injectable clock (`src/domain/clock.ts`) lets the debug API set a mock "now" via `tickTo(sec)` / `tickForward(sec)` without touching the real system clock.
 - `setEvents([{type, t}])` overwrites today's events for testing arbitrary scenarios (faulty sequences allowed); `setHistoryDay(date, events)` writes or (with `[]`) deletes a past day.
 - `state.analysis` shows whether today's sequence is valid and lists its issues.
+- `seedDemoWeek()` writes five example weekdays before today (one faulty) into history (`src/debug/demo.ts`). The `pnpm demo` build (`VITE_DEMO=1`, port 4176) runs it automatically when the history is empty and shows a "Demo" badge.
 - `simulateMidnight()` forces a rollover check.
 - `getHistory()` returns all archived records; `clearHistory()` wipes the history store.

@@ -134,6 +134,20 @@ First-time setup on Linux/WSL: `pnpm exec playwright install chromium` and the s
 
 The manual checks below remain for what automation can't cover: add-to-home-screen on real Android/iOS devices, the native OS time picker, and real screen lock / background behaviour on iOS.
 
+### Demo data (`pnpm demo`)
+
+`pnpm demo` builds with `VITE_DEMO=1` into `dist-demo/` and serves it on port 4176 (own origin, own data). On first start with an empty history it writes the five weekdays before today (`src/debug/demo.ts`):
+
+| Day | Events | Shows |
+| --- | --- | --- |
+| 1 | 08:00–12:00, 12:30–16:30 | break1 fitted into the lunch gap — 8h worked, 0:30 breaks |
+| 2 | 07:45–13:45, 14:15–18:00 | break1 in the gap, break2 injected after 9h — 9h30 worked, 0:45 breaks |
+| 3 | in 08:15, in 12:45, out 17:00 | **faulty** (deleted 12:00 clock-out) — red dot, "Two clock-ins in a row" |
+| 4 | 09:00–17:30 | break1 injected after 6h — 8h worked, 0:30 breaks |
+| 5 | 08:00–10:00, 10:10–12:30, 13:15–15:00 | neutral 10 min gap, break1 in the lunch — 6h05 worked |
+
+A "Demo" badge appears in the header. `__clocked.seedDemoWeek()` rewrites those days in any build (including production) — handy after editing them. Production builds contain no auto-seeding.
+
 ## Manual V&V (run after any change, at minimum after storage/SW/UI changes)
 
 Run with `pnpm preview` (serves on `localhost`, so the real SW registers):

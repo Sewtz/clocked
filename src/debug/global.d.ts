@@ -28,6 +28,7 @@ declare global {
       clear(): Promise<void>
       getHistory(): Promise<Worktime[]>
       clearHistory(): Promise<void>
+      seedDemoWeek(): Promise<Worktime[]>
       tickTo(sec: number): void
       tickForward(sec: number): void
       useRealClock(): void

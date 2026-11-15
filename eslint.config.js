@@ -10,6 +10,6 @@ export default [
     },
   },
   {
-    ignores: ['dist/**', 'dist-e2e/**', 'dev-dist/**', 'coverage/**', 'share/**', 'playwright-report/**', 'test-results/**'],
+    ignores: ['dist/**', 'dist-e2e/**', 'dist-demo/**', 'dev-dist/**', 'coverage/**', 'share/**', 'playwright-report/**', 'test-results/**'],
   },
 ]

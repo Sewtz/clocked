@@ -52,6 +52,7 @@ pnpm lint         # eslint (flat config)
 pnpm typecheck    # vue-tsc --noEmit (app) + tsc (e2e)
 pnpm test         # vitest unit/component/store/storage suites
 pnpm test:e2e     # Playwright scenarios against the production build (port 4175)
+pnpm demo         # demo build on port 4176, pre-filled with an example week (one faulty day)
 ```
 
 Required order before committing a change: **lint -> typecheck -> build**.
