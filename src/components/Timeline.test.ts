@@ -5,6 +5,7 @@ import { useClockStore } from '@/stores/clock'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import Timeline from './Timeline.vue'
 import EditTimesDialog from './EditTimesDialog.vue'
+import { punchesToEvents } from '@/domain/events'
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -19,7 +20,7 @@ describe('Timeline', () => {
   it('renders work segments when present', () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-21', punches: [{ in: 28800, out: 32400 }] }
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 28800, out: 32400 }]) }
     store.now = 32400 * 1000
     const wrapper = mount(Timeline)
     expect(wrapper.text()).toContain('Timeline')
@@ -29,7 +30,7 @@ describe('Timeline', () => {
   it('renders mandatory-break with auto tag', () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-21', punches: [{ in: 0 }] }
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 0 }]) }
     // Set now to trigger break1
     const nowSec = 21601
     store.now = nowSec * 1000
@@ -42,7 +43,7 @@ describe('Timeline', () => {
   it('opens EditTimesDialog when clicked', async () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-21', punches: [{ in: 28800, out: 32400 }] }
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 28800, out: 32400 }]) }
     store.now = 32400 * 1000
     const wrapper = mount(Timeline)
     await wrapper.find('button[aria-label="Edit times"]').trigger('click')
@@ -53,12 +54,39 @@ describe('Timeline', () => {
   it('closes EditTimesDialog when close event emitted', async () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-21', punches: [{ in: 28800, out: 32400 }] }
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 28800, out: 32400 }]) }
     store.now = 32400 * 1000
     const wrapper = mount(Timeline)
     await wrapper.find('button[aria-label="Edit times"]').trigger('click')
     const dialog = wrapper.findComponent(EditTimesDialog)
     await dialog.vm.$emit('close')
     expect(wrapper.findComponent(EditTimesDialog).exists()).toBe(false)
+  })
+
+  it('renders nothing for a faulty day', () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-21', events: [{ type: 'out', t: 28800 }, { type: 'in', t: 32400 }] }
+    store.now = 36000 * 1000
+    const wrapper = mount(Timeline)
+    expect(wrapper.text()).toBe('')
+  })
+
+  it('renders nothing for a day with no events', () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-21', events: [] }
+    const wrapper = mount(Timeline)
+    expect(wrapper.text()).toBe('')
+  })
+
+  it('passes the day being shown to the editor', async () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 28800, out: 32400 }]) }
+    store.now = 32400 * 1000
+    const wrapper = mount(Timeline)
+    await wrapper.find('button[aria-label="Edit times"]').trigger('click')
+    expect(wrapper.findComponent(EditTimesDialog).props('date')).toBe('2026-07-21')
   })
 })

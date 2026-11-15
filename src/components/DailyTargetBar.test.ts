@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useClockStore } from '@/stores/clock'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import DailyTargetBar from './DailyTargetBar.vue'
+import { punchesToEvents } from '@/domain/events'
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -22,7 +23,7 @@ describe('DailyTargetBar', () => {
   it('shows progress bar color change on overtime', () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-21', punches: [{ in: 0, out: 36000 }] }
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 0, out: 36000 }]) }
     store.now = 36000 * 1000
     const wrapper = mount(DailyTargetBar)
     const bar = wrapper.find('.h-full')

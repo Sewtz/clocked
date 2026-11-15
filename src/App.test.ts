@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
-import { clearWorktime } from '@/storage/worktime'
+import { clearWorktime, putWorktime } from '@/storage/worktime'
 import { setClock } from '@/domain/clock'
 import App from './App.vue'
 
@@ -45,5 +45,19 @@ describe('App integration', () => {
     await calendar.trigger('click')
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(wrapper.text()).toContain('Calendar')
+  })
+
+  it('shows the faulty view and a red status dot for a faulty day', async () => {
+    const t = new Date('2026-07-21T12:00:00').getTime()
+    setClock(() => t)
+    await putWorktime({
+      date: '2026-07-21',
+      events: [{ type: 'in', t: 28800 }, { type: 'in', t: 36000 }],
+    })
+    const wrapper = await mountApp()
+    expect(wrapper.find('[data-testid="faulty-day"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('Clock In')
+    const dot = wrapper.find('header span.rounded-full')
+    expect(dot.attributes('style')).toContain('var(--color-overtime)')
   })
 })

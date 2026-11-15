@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { punchesToEvents } from '@/domain/events'
+import type { Worktime } from '@/domain/types'
 import {
   getHistoryDay,
   putHistoryDay,
@@ -8,13 +10,10 @@ import {
   clearHistory,
 } from './history'
 
-const DAY_A: WorktimeFixture = { date: '2026-08-03', punches: [{ in: 28800, out: 32400 }] }
-const DAY_B: WorktimeFixture = { date: '2026-08-17', punches: [{ in: 28800 }, { in: 36000, out: 43200 }] }
+const DAY_A: WorktimeFixture = { date: '2026-08-03', events: punchesToEvents([{ in: 28800, out: 32400 }]) }
+const DAY_B: WorktimeFixture = { date: '2026-08-17', events: punchesToEvents([{ in: 28800 }, { in: 36000, out: 43200 }]) }
 
-interface WorktimeFixture {
-  date: string
-  punches: Array<{ in: number; out?: number }>
-}
+type WorktimeFixture = Worktime
 
 beforeEach(async () => {
   await clearHistory()
@@ -38,7 +37,7 @@ describe('putHistoryDay', () => {
   })
 
   it('overwrites an existing record for the same date', async () => {
-    await putHistoryDay({ date: '2026-08-03', punches: [{ in: 0, out: 1 }] })
+    await putHistoryDay({ date: '2026-08-03', events: punchesToEvents([{ in: 0, out: 1 }]) })
     await putHistoryDay(DAY_A)
     expect(await getHistoryDay('2026-08-03')).toStrictEqual(DAY_A)
   })
@@ -69,10 +68,10 @@ describe('getAllHistory', () => {
 
 describe('getHistoryRange', () => {
   it('returns only records within the inclusive range', async () => {
-    await putHistoryDay({ date: '2026-08-02', punches: [{ in: 0, out: 1 }] })
+    await putHistoryDay({ date: '2026-08-02', events: punchesToEvents([{ in: 0, out: 1 }]) })
     await putHistoryDay(DAY_A)
     await putHistoryDay(DAY_B)
-    await putHistoryDay({ date: '2026-08-30', punches: [{ in: 0, out: 1 }] })
+    await putHistoryDay({ date: '2026-08-30', events: punchesToEvents([{ in: 0, out: 1 }]) })
     const result = await getHistoryRange('2026-08-03', '2026-08-17')
     expect(Object.keys(result)).toHaveLength(2)
     expect(result['2026-08-03']).toStrictEqual(DAY_A)
@@ -80,7 +79,7 @@ describe('getHistoryRange', () => {
   })
 
   it('returns empty object when nothing in range', async () => {
-    await putHistoryDay({ date: '2026-09-01', punches: [{ in: 0, out: 1 }] })
+    await putHistoryDay({ date: '2026-09-01', events: punchesToEvents([{ in: 0, out: 1 }]) })
     expect(await getHistoryRange('2026-08-03', '2026-08-17')).toEqual({})
   })
 })

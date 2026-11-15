@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useClockStore } from '@/stores/clock'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import ClockInView from './ClockInView.vue'
+import { punchesToEvents } from '@/domain/events'
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -28,7 +29,7 @@ describe('ClockInView', () => {
   it('renders worked today and stats when clocked out', () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-21', punches: [{ in: 0, out: 3600 }] }
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 0, out: 3600 }]) }
     store.now = 3600 * 1000
     const wrapper = mount(ClockInView)
     expect(wrapper.text()).toContain('Worked today')
@@ -58,7 +59,7 @@ describe('ClockInView', () => {
   it('does not render old WP4 affordances', () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-21', punches: [{ in: 0, out: 3600 }] }
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 0, out: 3600 }]) }
     store.now = 3600 * 1000
     const wrapper = mount(ClockInView)
     expect(wrapper.find('input[type="time"]').exists()).toBe(false)

@@ -2,23 +2,24 @@ import { now, setClock } from '@/domain/clock'
 import { todayString, secondsSinceMidnight } from '@/domain/date'
 import { getAllHistory } from '@/storage/history'
 import { DEFAULT_SETTINGS } from '@/domain/types'
-import type { Settings } from '@/domain/types'
+import type { PunchEvent, Settings } from '@/domain/types'
 import type { useClockStore } from '@/stores/clock'
 
 export function installDebugApi(store: ReturnType<typeof useClockStore>) {
   const api = {
     help: () => {
       console.table([
-        { method: 'state', returns: 'current snapshot (settings, worktime, now, worked, display, breakState, breakEndsAt, viewState, targetReached, limitReached)' },
+        { method: 'state', returns: 'current snapshot (settings, worktime, analysis, now, worked, display, breakState, breakEndsAt, viewState, targetReached, limitReached)' },
         { method: 'settings', returns: 'current settings object' },
         { method: 'setSettings(patch)', returns: 'merge-patch settings, persists' },
         { method: 'resetSettings()', returns: 'restore DEFAULT_SETTINGS' },
         { method: 'worktime', returns: 'current raw worktime object' },
         { method: 'punchIn(sec?)', returns: 'clock in (default now, or specific sec-since-midnight)' },
         { method: 'punchOut()', returns: 'clock out' },
-        { method: 'setPunches(punches)', returns: 'overwrite today\'s punches' },
+        { method: 'setEvents(events)', returns: 'overwrite today\'s events, e.g. [{type:\'in\',t:28800}] (faulty sequences allowed)' },
+        { method: 'setHistoryDay(date, events)', returns: 'overwrite a past day (YYYY-MM-DD) in history; [] deletes it' },
         { method: 'clear()', returns: 'clear today\'s worktime (archives to history)' },
-        { method: 'getHistory()', returns: 'array of all archived Worktime records (date + punches)' },
+        { method: 'getHistory()', returns: 'array of all archived Worktime records (date + events)' },
         { method: 'clearHistory()', returns: 'wipe the entire history store' },
         { method: 'tickTo(sec)', returns: 'set mock clock to sec-since-midnight' },
         { method: 'tickForward(sec)', returns: 'advance mock clock by sec' },
@@ -31,6 +32,7 @@ export function installDebugApi(store: ReturnType<typeof useClockStore>) {
       return {
         settings: store.settings,
         worktime: store.worktime,
+        analysis: store.analysis,
         now: store.now,
         worked: store.workedMs,
         display: store.displayMs,
@@ -62,11 +64,12 @@ export function installDebugApi(store: ReturnType<typeof useClockStore>) {
       await store.clockOut()
     },
 
-    setPunches: async (punches: Array<{ in: number; out?: number }>) => {
-      if (!store.worktime) {
-        store.worktime = { date: todayString(new Date(now())), punches: [] }
-      }
-      await store.replacePunches(punches)
+    setEvents: async (events: PunchEvent[]) => {
+      await store.replaceDayEvents(todayString(new Date(now())), events)
+    },
+
+    setHistoryDay: async (date: string, events: PunchEvent[]) => {
+      await store.replaceDayEvents(date, events)
     },
 
     clear: async () => {

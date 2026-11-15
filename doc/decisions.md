@@ -126,7 +126,7 @@ ADR-style log. Each entry: context → decision → consequences. Append new dec
 - **Decision:** in the DB upgrade from v1→v2, delete the `entries` object store if present. Do not attempt to convert old data to the new punch format.
 - **Consequences:** any IndexedDB data from a prior session is silently discarded on upgrade. Clean slate.
 
-## ADR-021 — Punches stored as seconds-since-midnight
+## ADR-021 — Punches stored as seconds-since-midnight (storage shape superseded by ADR-036)
 
 - **Context:** worktime resets every midnight. Using epoch-ms would require comparing dates across records; seconds-since-midnight naturally scopes to the current day and is reset-friendly.
 - **Decision:** in the `worktime` store, `in` and `out` values are integer seconds elapsed since midnight of the current local day (range 0–86399). An open punch has `out === undefined`.
@@ -201,13 +201,13 @@ All questions in `discussion.md` have been answered. New decisions will be appen
   6. Timeline renders `gap` with neutral color/label ("Gap"), `mandatory-break` as "Brk" + "auto" tag with break color, `work` as before.
 - **Consequences:** the "Breaks" stat now shows only mandatory break time. Gaps are visually neutral in the timeline. The mandatory-break logic is unchanged (breaks still fire at triggers when no fitting gap exists). ADR-027's gap-counting portion is superseded; the per-gap walk and break order remain.
 
-## ADR-029 — Editable punch times via OS time picker from the Timeline
+## ADR-029 — Editable punch times via OS time picker from the Timeline (amended by ADR-036/037/038)
 
 - **Context:** previously the only edit affordances were the WP4 `+Nmin`/`custom-time`/`edit-start` controls, removed in WP9-T6/T7. The user requested that any in/out time be editable by clicking the timeline.
 - **Decision:** clicking anywhere on the `Timeline` opens `EditTimesDialog` (modal styled identically to `SettingsDialog`). The dialog lists every punch event as a separate row: "Clocked in" with `<input type="time">`, and (if present) "Clocked out" with `<input type="time">`. The running punch has only its "Clocked in" row. The native time picker is invoked by the browser for `<input type="time">`. Save routes through the new `store.replacePunches(punches)` action, which clamps values to `[0, 86399]`, recomputes `_isClockedIn` from the last punch's `out`, and persists. Out-of-order edits (`out < in` or `punches[i].out > punches[i+1].in`) are rejected with an inline error and the Save button is disabled; the dialog stays open. The debug API `setPunches` is refactored to call `replacePunches` so all mutations go through one action.
 - **Consequences:** editing drops sub-minute precision (seconds are zeroed) because `<input type="time">` only carries `HH:MM`. This is acceptable: punch times are user-corrected approximations and the device clock is already user-editable (ADR-009). Adding or deleting punches is **not** supported from the UI — use the debug API for that.
 
-## ADR-030 — Historic data archive (`history` store)
+## ADR-030 — Historic data archive (`history` store) (record shape amended by ADR-036)
 
 - **Context:** previously midnight rollover deleted today's punches (ADR-010, ADR-021). The user wanted historic data preserved in a separate category for a calendar view, while keeping today's data in the live `worktime` store.
 - **Decision:** DB `clocked` version 3 adds a `history` object store (out-of-line keys, keyed by `YYYY-MM-DD`). The stored value is the existing `Worktime` type (`{date, punches: [{in, out?}]}`) — raw punch events only, no aggregates. On midnight rollover, `reset()` archives the current worktime (closing any open punch at `out=86399` first) via `putHistoryDay(worktime)`, then clears the live `worktime` store. Today's live worktime is overlaid onto the history cache at view time so the calendar shows today's dot and live segments.
@@ -243,6 +243,41 @@ All questions in `discussion.md` have been answered. New decisions will be appen
 - **Decision:** `workedSeconds = workedGross − injected mandatory pauses` (those inserted at a trigger during a work punch, live or elapsed). Breaks fitted into a gap count toward `breakSeconds` and are still shown as `mandatory-break` segments, but they are not subtracted from worked time.
 - **Consequences:** days with a qualifying gap show more worked time than before (by the fitted break durations). Live-break behaviour (ADR-024) is unchanged. Historic days are recomputed at view time, so they display the corrected totals with no migration.
 
+## ADR-036 — A day is stored as a flat list of in/out events (supersedes ADR-021's shape)
+
+- **Context:** days were stored as pairs, `punches: Array<{ in, out? }>`. Deleting a single clock event could not be represented: removing an `in` leaves an `out` with no pair, and removing an `out` leaves an open pair in the middle of the day. See epic #5.
+- **Decision:** `Worktime = { date, events: PunchEvent[] }` with `PunchEvent = { type: 'in' | 'out'; t }` (seconds since local midnight, as before). The list is kept sorted by `t`; stored order breaks ties. `analyse(events, { allowOpen })` derives validity and, for valid days, the pairs that `recompute()` consumes. `recompute()` itself is unchanged.
+- **Consequences:** any sequence is storable; validity is computed, never stored. Export/import (planned) round-trips raw events. ADR-029's `replacePunches` is replaced by `replaceDayEvents(date, events)`; the debug API's `setPunches` by `setEvents` (ADR-025 otherwise unchanged).
+
+## ADR-037 — Faulty days are saved and flagged; no calculation or clocking until fixed
+
+- **Context:** with deletion possible, a day can become faulty (e.g. `in, in, out`). Either such a day is never saved, or it is saved and flagged.
+- **Decision:** faulty days are saved as-is. A faulty day has zero worked time and breaks, no segments, blocks clock-in/out, and puts the app in `viewState: 'faulty'` (`FaultyDayView` with **Fix times**; red status dot). The calendar marks it with a red dot and lists its raw events with issue hints. A valid open day is closed at 23:59:59 on rollover; a faulty day is archived unchanged. A trailing `in` is valid only for today (`open-past-day` otherwise).
+- **Consequences:** the user can stop mid-correction and come back. No totals are shown for data the app can't interpret. The device clock going backwards cannot produce an `out` before its `in` (clock-out uses `max(now, last.t)`).
+
+## ADR-038 — Events can be added and deleted; past days are editable
+
+- **Context:** ADR-029 allowed editing times only, for today only. Fixing a faulty day by deletion alone loses data, and faulty days can reach history at rollover.
+- **Decision:** `EditTimesDialog` becomes a day editor for any date up to today: edit, add (in/out + time, inserted sorted) and delete events, with live faulty highlighting; saving is always allowed. It opens from the Timeline, from **Fix times**, and from **Edit day** in the calendar (today and past days, including empty ones, so a forgotten day can be recorded; future days are disabled). An empty list removes the day.
+- **Consequences:** history is no longer append-only; edits rewrite the `history` record and the calendar cache. Sub-minute precision is still dropped on edited events (ADR-029).
+
+## ADR-039 — DB v4 migrates stored days from punches to events
+
+- **Context:** existing installs hold v3 records in the `{ punches }` shape in both `worktime` and `history`.
+- **Decision:** bump `DB_VERSION` to 4. For `oldVersion` 2–3, the upgrade walks both stores with a cursor inside the version-change transaction and rewrites each `{ punches }` record to `{ events }` (`migrateRecord`); records already in the new shape are skipped. A migration error aborts the transaction so the database stays at v3 with data intact.
+- **Consequences:** the upgrade is one-way: an older build cannot open a v4 database (IndexedDB `VersionError`). Builds of intermediate commits must not be pointed at real data. Fresh installs create the stores directly.
+
+## ADR-040 — Playwright end-to-end scenarios against the production build
+
+- **Context:** unit and component tests run in happy-dom with `fake-indexeddb`; they can't exercise the service worker, a real browser's IndexedDB upgrade path, or whole user journeys across reloads and midnight. Manual V&V of these was slow and easy to skip.
+- **Decision:** add `@playwright/test` (dev only) with scenarios in `e2e/*.e2e.ts` (named so Vitest ignores them). The suite builds into `dist-e2e/` and serves it with `vite preview` on port 4175, in Chromium desktop + Pixel 7 profiles, timezone `Europe/Berlin`, with the browser clock frozen and jumped via `page.clock.fastForward`. A v3 database is seeded on the app's origin (a routed blank page) to test the v4 upgrade for real. Run with `pnpm test:e2e`; e2e files are type-checked by `pnpm typecheck` via `tsconfig.e2e.json`. Two `data-testid`s were added to `StatsGrid` for stable assertions.
+- **Consequences:** `pnpm test:e2e` joins the V&V order before manual checks. Manual V&V shrinks to device-only behaviour (home-screen install, native time picker, iOS screen lock). Contributors need a one-time Chromium download plus system libraries on Linux. Not wired into CI yet.
+
+## ADR-041 — Midnight rollover runs on start and on visibility change only
+
+- **Context:** the 1 s tick only updates `now`; `checkRollover()` runs in `init()`, `onVisible()` and before `replaceDayEvents()`. `architecture.md` had claimed it also ran on the tick. A desktop tab left in the foreground across midnight therefore keeps showing the previous day.
+- **Decision:** keep it that way. The intended use is the installed PWA on a phone, which is locked/hidden overnight, so the day rolls over when the app is reopened. A browser tab left open is not a supported use case.
+- **Consequences:** no extra work per tick. Tests that cross midnight must simulate the app coming back into view (dispatch `visibilitychange`) or reload, as the e2e suite does.
 ## ADR-042 — A break is fitted into a gap only once its trigger is reached (amends ADR-028)
 
 - **Context:** ADR-028 fits mandatory breaks into a gap based on the gap's duration alone. A 60-minute gap therefore got break1 **and** break2 on a 6h 06m day, although the 9h trigger for break2 was never reached (#18).

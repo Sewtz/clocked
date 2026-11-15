@@ -1,4 +1,4 @@
-import type { Settings, Worktime } from '@/domain/types'
+import type { Analysis, PunchEvent, Settings, Worktime } from '@/domain/types'
 
 declare global {
   interface Window {
@@ -7,6 +7,7 @@ declare global {
       readonly state: {
         settings: Settings | null
         worktime: Worktime | null
+        analysis: Analysis | null
         now: number
         worked: number
         display: number
@@ -22,7 +23,8 @@ declare global {
       readonly worktime: Worktime | null
       punchIn(sec?: number): Promise<void>
       punchOut(): Promise<void>
-      setPunches(punches: Array<{ in: number; out?: number }>): Promise<void>
+      setEvents(events: PunchEvent[]): Promise<void>
+      setHistoryDay(date: string, events: PunchEvent[]): Promise<void>
       clear(): Promise<void>
       getHistory(): Promise<Worktime[]>
       clearHistory(): Promise<void>

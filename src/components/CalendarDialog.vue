@@ -4,6 +4,7 @@ import { useClockStore } from '@/stores/clock'
 import { useScrollLock } from '@/components/ui/useScrollLock'
 import CalendarGrid from './CalendarGrid.vue'
 import DayEventList from './DayEventList.vue'
+import EditTimesDialog from './EditTimesDialog.vue'
 import { lastFourWeeksRange, ymd, secondsSinceMidnight } from '@/domain/date'
 
 const emit = defineEmits<{ close: [] }>()
@@ -20,7 +21,7 @@ onMounted(async () => {
 
 const history = computed(() => {
   const base = store.historyCache ?? {}
-  if (store.worktime && store.worktime.punches.length > 0) {
+  if (store.worktime && store.worktime.events.length > 0) {
     return { ...base, [store.worktime.date]: store.worktime }
   }
   return base
@@ -40,6 +41,18 @@ const nowSec = computed(() => {
 
 function onSelect(ymdStr: string) {
   selectedDate.value = ymdStr
+}
+
+const todayYmd = computed(() => ymd(today.value))
+const isSelectedToday = computed(() => selectedDate.value === todayYmd.value)
+// Today and past days are editable (including empty ones); future days are not.
+const canEdit = computed(() => !!selectedDate.value && selectedDate.value <= todayYmd.value)
+
+const editOpen = ref(false)
+
+async function onEditClose() {
+  editOpen.value = false
+  await store.loadHistoryRange(range.value.start, range.value.end)
 }
 </script>
 
@@ -67,12 +80,26 @@ function onSelect(ymdStr: string) {
           :selectedDate="selectedDate"
           @select="onSelect"
         />
-        <DayEventList
-          :worktime="selectedWorktime"
-          :settings="store.settings"
-          :nowSec="nowSec"
-        />
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <span class="font-mono text-xs tracking-widest text-text-dim uppercase">{{ selectedDate ?? '' }}</span>
+            <button
+              type="button"
+              class="font-mono text-[10px] tracking-widest uppercase px-3 py-1 border border-border-2 text-text-dim hover:text-text hover:border-text-faint transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              :disabled="!canEdit"
+              :title="canEdit ? 'Edit this day' : 'Future days cannot be edited'"
+              @click="editOpen = true"
+            >Edit day</button>
+          </div>
+          <DayEventList
+            :worktime="selectedWorktime"
+            :settings="store.settings"
+            :nowSec="nowSec"
+            :isToday="isSelectedToday"
+          />
+        </div>
       </div>
     </div>
+    <EditTimesDialog v-if="editOpen && selectedDate" :date="selectedDate" @close="onEditClose" />
   </div>
 </template>

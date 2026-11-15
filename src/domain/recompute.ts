@@ -1,7 +1,7 @@
-import type { Recomputed, Settings, Worktime, BreakState, DerivedSegment } from './types'
+import type { Punch, Recomputed, Settings, BreakState, DerivedSegment } from './types'
 
 export function recompute(
-  punches: Worktime['punches'],
+  punches: readonly Punch[],
   settings: Settings,
   nowSec: number,
 ): Recomputed {

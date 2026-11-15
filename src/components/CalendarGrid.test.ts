@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import CalendarGrid from './CalendarGrid.vue'
 import type { Worktime } from '@/domain/types'
+import { punchesToEvents } from '@/domain/events'
 
-const DAY_A: Worktime = { date: '2026-08-17', punches: [{ in: 28800 }] }
-const DAY_B: Worktime = { date: '2026-08-18', punches: [{ in: 0, out: 1 }] }
+const DAY_A: Worktime = { date: '2026-08-17', events: punchesToEvents([{ in: 28800 }]) }
+const DAY_B: Worktime = { date: '2026-08-18', events: punchesToEvents([{ in: 0, out: 1 }]) }
 
 describe('CalendarGrid', () => {
   it('renders header and 28 cells', () => {
@@ -81,5 +82,37 @@ describe('CalendarGrid', () => {
     const labels = wrapper.findAll('button').map(b => b.attributes('aria-label'))
     expect(labels[0]).toBe('2026-07-27')
     expect(labels[27]).toBe('2026-08-23')
+  })
+
+  it('marks a faulty day with a red dot and a faulty label', () => {
+    const wrapper = mount(CalendarGrid, {
+      props: {
+        today: new Date(2026, 7, 19, 12, 0),
+        history: {
+          '2026-08-17': { date: '2026-08-17', events: [{ type: 'in', t: 1 }, { type: 'in', t: 2 }] },
+          '2026-08-18': DAY_B,
+        },
+        selectedDate: null,
+      },
+    })
+    const faulty = wrapper.find('button[aria-label="2026-08-17, faulty"]')
+    expect(faulty.exists()).toBe(true)
+    expect(faulty.find('[data-status]').attributes('data-status')).toBe('faulty')
+    expect(faulty.find('[data-status]').attributes('style')).toContain('var(--color-overtime)')
+    const valid = wrapper.find('button[aria-label="2026-08-18"]')
+    expect(valid.find('[data-status]').attributes('data-status')).toBe('valid')
+  })
+
+  it('treats an open day as valid today but faulty in the past', () => {
+    const open = (date: string): Worktime => ({ date, events: [{ type: 'in', t: 28800 }] })
+    const wrapper = mount(CalendarGrid, {
+      props: {
+        today: new Date(2026, 7, 19, 12, 0),
+        history: { '2026-08-18': open('2026-08-18'), '2026-08-19': open('2026-08-19') },
+        selectedDate: null,
+      },
+    })
+    expect(wrapper.find('button[aria-label="2026-08-18, faulty"]').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="2026-08-19"] [data-status]').attributes('data-status')).toBe('valid')
   })
 })

@@ -46,3 +46,10 @@ yarn-error.log*
 
 # Windows ADS metadata
 *Zone.Identifier
+
+# playwright e2e
+/dist-e2e
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache

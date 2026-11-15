@@ -5,6 +5,7 @@ import ClockInView from '@/components/ClockInView.vue'
 import RunningView from '@/components/RunningView.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
 import CalendarDialog from '@/components/CalendarDialog.vue'
+import FaultyDayView from '@/components/FaultyDayView.vue'
 
 const store = useClockStore()
 const settingsOpen = ref(false)
@@ -27,7 +28,8 @@ onBeforeUnmount(() => {
 const view = computed(() => store.viewState)
 
 const statusColor = computed(() =>
-  store.breakState === 'break1' || store.breakState === 'break2' ? 'var(--color-break)'
+  store.isFaulty ? 'var(--color-overtime)'
+  : store.breakState === 'break1' || store.breakState === 'break2' ? 'var(--color-break)'
   : store.isClockedIn ? 'var(--color-work)'
   : '#3a3a3a',
 )
@@ -91,6 +93,7 @@ const todayLabel = computed(() =>
       <template v-else>
         <ClockInView v-if="view.kind === 'clock-in' || view.kind === 'clocked-out'" />
         <RunningView v-else-if="view.kind === 'running' || view.kind === 'break'" />
+        <FaultyDayView v-else-if="view.kind === 'faulty'" />
       </template>
     </main>
 

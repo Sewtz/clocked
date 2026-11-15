@@ -7,6 +7,8 @@ import { getHistoryDay, clearHistory } from '@/storage/history'
 import { setClock } from '@/domain/clock'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import { secondsSinceMidnight } from '@/domain/date'
+import { punchesToEvents, eventsToPunches } from '@/domain/events'
+import { recompute } from '@/domain/recompute'
 
 vi.mock('@/storage/persist', () => ({
   requestPersistence: vi.fn().mockResolvedValue(true),
@@ -26,7 +28,7 @@ describe('boot / init', () => {
     const t = new Date('2026-07-21T08:00:00').getTime()
     setClock(() => t)
     await putSettings(DEFAULT_SETTINGS)
-    await putWorktime({ date: '2026-07-21', punches: [{ in: secondsSinceMidnight(t) }] })
+    await putWorktime({ date: '2026-07-21', events: punchesToEvents([{ in: secondsSinceMidnight(t) }]) })
 
     const store = useClockStore()
     await store.init()
@@ -55,7 +57,7 @@ describe('clockIn / clockOut', () => {
     store.settings = { ...DEFAULT_SETTINGS }
     await store.clockIn()
     expect(store.worktime).not.toBeNull()
-    expect(store.worktime!.punches).toHaveLength(1)
+    expect(store.worktime!.events).toHaveLength(1)
     expect(store.isClockedIn).toBe(true)
   })
 
@@ -78,7 +80,7 @@ describe('clockIn / clockOut', () => {
     store.settings = { ...DEFAULT_SETTINGS }
     await store.clockIn()
     await store.clockIn()
-    expect(store.worktime!.punches).toHaveLength(1)
+    expect(store.worktime!.events).toHaveLength(1)
   })
 
   it('clockIn after clockOut appends a new punch', async () => {
@@ -92,7 +94,7 @@ describe('clockIn / clockOut', () => {
     expect(store.isClockedOut).toBe(true)
     setClock(() => t + 7200_000)
     await store.clockIn()
-    expect(store.worktime!.punches).toHaveLength(2)
+    expect(store.worktime!.events.map(e => e.type)).toEqual(['in', 'out', 'in'])
     expect(store.isClockedIn).toBe(true)
   })
 
@@ -120,9 +122,9 @@ describe('adjustStart', () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
     await store.clockIn()
-    const orig = store.worktime!.punches[0].in
+    const orig = store.worktime!.events[0].t
     await store.adjustStart(300)
-    expect(store.worktime!.punches[0].in).toBe(orig - 300)
+    expect(store.worktime!.events[0].t).toBe(orig - 300)
   })
 
   it('is a no-op when clocked out', async () => {
@@ -133,9 +135,9 @@ describe('adjustStart', () => {
     await store.clockIn()
     setClock(() => t + 3600_000)
     await store.clockOut()
-    const punches = [...store.worktime!.punches]
+    const events = [...store.worktime!.events]
     await store.adjustStart(300)
-    expect(store.worktime!.punches).toStrictEqual(punches)
+    expect(store.worktime!.events).toStrictEqual(events)
   })
 })
 
@@ -148,7 +150,7 @@ describe('editClockIn', () => {
     await store.clockIn()
     const newIn = secondsSinceMidnight(t) - 600
     await store.editClockIn(newIn)
-    expect(store.worktime!.punches[0].in).toBe(newIn)
+    expect(store.worktime!.events[0].t).toBe(newIn)
   })
 })
 
@@ -219,7 +221,7 @@ describe('history archive', () => {
     const archived = await getHistoryDay('2026-07-20')
     expect(archived).not.toBeNull()
     expect(archived!.date).toBe('2026-07-20')
-    expect(archived!.punches).toEqual([{ in: 28800, out: 36000 }])
+    expect(archived!.events).toEqual(punchesToEvents([{ in: 28800, out: 36000 }]))
   })
 
   it('closes an open punch at 86399 when archiving on rollover', async () => {
@@ -231,7 +233,7 @@ describe('history archive', () => {
     store.worktime!.date = '2026-07-20'
     await store.checkRollover()
     const archived = await getHistoryDay('2026-07-20')
-    expect(archived!.punches).toEqual([{ in: 28800, out: 86399 }])
+    expect(archived!.events).toEqual(punchesToEvents([{ in: 28800, out: 86399 }]))
   })
 
   it('does not archive when worktime has no punches', async () => {
@@ -239,7 +241,7 @@ describe('history archive', () => {
     setClock(() => t)
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-20', punches: [] }
+    store.worktime = { date: '2026-07-20', events: punchesToEvents([]) }
     await store.checkRollover()
     expect(await getHistoryDay('2026-07-20')).toBeNull()
   })
@@ -254,7 +256,7 @@ describe('history archive', () => {
     await store.clockOut()
     store.worktime!.date = '2026-07-20'
     await store.checkRollover()
-    expect((await getHistoryDay('2026-07-20'))!.punches).toEqual([{ in: 28800, out: 32400 }])
+    expect((await getHistoryDay('2026-07-20'))!.events).toEqual(punchesToEvents([{ in: 28800, out: 32400 }]))
     const t2 = new Date('2026-07-22T08:00:00').getTime()
     setClock(() => t2)
     await store.clockIn()
@@ -262,7 +264,7 @@ describe('history archive', () => {
     await store.clockOut()
     store.worktime!.date = '2026-07-21'
     await store.checkRollover()
-    expect((await getHistoryDay('2026-07-21'))!.punches).toEqual([{ in: 28800, out: 32400 }])
+    expect((await getHistoryDay('2026-07-21'))!.events).toEqual(punchesToEvents([{ in: 28800, out: 32400 }]))
   })
 })
 
@@ -272,12 +274,12 @@ describe('loadHistoryRange', () => {
     setClock(() => t)
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-20', punches: [{ in: 28800, out: 32400 }] }
+    store.worktime = { date: '2026-07-20', events: punchesToEvents([{ in: 28800, out: 32400 }]) }
     await store.checkRollover()
     store.worktime = null
     await store.loadHistoryRange(new Date(2026, 6, 13), new Date(2026, 6, 26))
     expect(store.historyCache).not.toBeNull()
-    expect(store.historyCache!['2026-07-20'].punches).toEqual([{ in: 28800, out: 32400 }])
+    expect(store.historyCache!['2026-07-20'].events).toEqual(punchesToEvents([{ in: 28800, out: 32400 }]))
   })
 
   it('merges today into the cache', async () => {
@@ -315,7 +317,7 @@ describe('clearHistory action', () => {
     setClock(() => t)
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-20', punches: [{ in: 28800, out: 32400 }] }
+    store.worktime = { date: '2026-07-20', events: punchesToEvents([{ in: 28800, out: 32400 }]) }
     await store.checkRollover()
     await store.loadHistoryRange(new Date(2026, 6, 13), new Date(2026, 6, 26))
     expect(await getHistoryDay('2026-07-20')).not.toBeNull()
@@ -412,7 +414,7 @@ describe('clock out during break', () => {
     // Try to clock in (should be no-op)
     await store.clockIn()
     // Should still have only 1 punch
-    expect(store.worktime!.punches).toHaveLength(1)
+    expect(store.worktime!.events).toHaveLength(1)
   })
 })
 
@@ -517,62 +519,187 @@ describe('redesign getters', () => {
   })
 })
 
-describe('replacePunches', () => {
-  it('replaces punches and recomputes _isClockedIn from last punch', async () => {
-    const t = new Date('2026-07-21T08:00:00').getTime()
-    setClock(() => t)
+describe('replaceDayEvents (today)', () => {
+  const T = new Date('2026-07-21T08:00:00').getTime()
+  const TODAY = '2026-07-21'
+
+  function setup() {
+    setClock(() => T)
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
+    store.now = T
+    return store
+  }
+
+  it('replaces events; a closed sequence is clocked-out', async () => {
+    const store = setup()
     await store.clockIn()
-    await store.replacePunches([{ in: 25200 }, { in: 28800, out: 32400 }])
-    expect(store.worktime!.punches).toEqual([
-      { in: 25200 },
-      { in: 28800, out: 32400 },
-    ])
-    expect(store._isClockedIn).toBe(false)
+    await store.replaceDayEvents(TODAY, punchesToEvents([{ in: 25200, out: 27000 }]))
+    expect(store.worktime!.events).toEqual(punchesToEvents([{ in: 25200, out: 27000 }]))
+    expect(store.isClockedIn).toBe(false)
     expect(store.viewState.kind).toBe('clocked-out')
   })
 
-  it('preserves running punch when last punch has no out', async () => {
-    const t = new Date('2026-07-21T08:00:00').getTime()
-    setClock(() => t)
-    const store = useClockStore()
-    store.settings = { ...DEFAULT_SETTINGS }
+  it('a trailing in keeps the day running', async () => {
+    const store = setup()
     await store.clockIn()
-    await store.replacePunches([{ in: 28800 }])
-    expect(store._isClockedIn).toBe(true)
+    await store.replaceDayEvents(TODAY, [{ type: 'in', t: 25200 }])
+    expect(store.isClockedIn).toBe(true)
     expect(store.viewState.kind).toBe('running')
   })
 
-  it('clamps punches to 0..86399', async () => {
-    const t = new Date('2026-07-21T08:00:00').getTime()
-    setClock(() => t)
-    const store = useClockStore()
-    store.settings = { ...DEFAULT_SETTINGS }
-    await store.clockIn()
-    await store.replacePunches([{ in: -100 }, { in: 90000, out: 100000 }])
-    expect(store.worktime!.punches[0].in).toBe(0)
-    expect(store.worktime!.punches[1].in).toBe(86399)
-    expect(store.worktime!.punches[1].out).toBe(86399)
+  it('sorts events by time and clamps them to 0..86399', async () => {
+    const store = setup()
+    await store.replaceDayEvents(TODAY, [
+      { type: 'out', t: 100000 }, { type: 'in', t: -100 },
+    ])
+    expect(store.worktime!.events).toEqual([{ type: 'in', t: 0 }, { type: 'out', t: 86399 }])
   })
 
-  it('no-ops when worktime is null', async () => {
-    const store = useClockStore()
-    store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = null
-    await store.replacePunches([{ in: 28800 }])
+  it('removing every event clears the day back to clock-in', async () => {
+    const store = setup()
+    await store.clockIn()
+    await store.replaceDayEvents(TODAY, [])
     expect(store.worktime).toBeNull()
+    expect(await getWorktime()).toBeNull()
+    expect(store.viewState.kind).toBe('clock-in')
   })
 
   it('persists to storage', async () => {
+    const store = setup()
+    await store.replaceDayEvents(TODAY, [{ type: 'in', t: 25200 }])
+    expect(await getWorktime()).toStrictEqual(store.worktime)
+  })
+
+  it('ignores future dates', async () => {
+    const store = setup()
+    await store.replaceDayEvents('2026-07-22', [{ type: 'in', t: 25200 }])
+    expect(store.worktime).toBeNull()
+    expect(await getHistoryDay('2026-07-22')).toBeNull()
+  })
+})
+
+describe('replaceDayEvents (past day)', () => {
+  const T = new Date('2026-07-21T08:00:00').getTime()
+
+  it('writes the history store and the calendar cache', async () => {
+    setClock(() => T)
+    const store = useClockStore()
+    store.historyCache = {}
+    const events = punchesToEvents([{ in: 28800, out: 32400 }])
+    await store.replaceDayEvents('2026-07-20', events)
+    expect((await getHistoryDay('2026-07-20'))!.events).toEqual(events)
+    expect(store.historyCache['2026-07-20'].events).toEqual(events)
+    expect(store.worktime).toBeNull()
+  })
+
+  it('stores a faulty past day as-is', async () => {
+    setClock(() => T)
+    const store = useClockStore()
+    const events = [{ type: 'in' as const, t: 28800 }, { type: 'in' as const, t: 30000 }]
+    await store.replaceDayEvents('2026-07-20', events)
+    expect((await getHistoryDay('2026-07-20'))!.events).toEqual(events)
+  })
+
+  it('removing every event deletes the history day', async () => {
+    setClock(() => T)
+    const store = useClockStore()
+    store.historyCache = {}
+    await store.replaceDayEvents('2026-07-20', [{ type: 'in', t: 1 }, { type: 'out', t: 2 }])
+    await store.replaceDayEvents('2026-07-20', [])
+    expect(await getHistoryDay('2026-07-20')).toBeNull()
+    expect(store.historyCache['2026-07-20']).toBeUndefined()
+  })
+})
+
+describe('faulty day', () => {
+  const T = new Date('2026-07-21T12:00:00').getTime()
+  const FAULTY = [{ type: 'in' as const, t: 28800 }, { type: 'in' as const, t: 36000 }, { type: 'out' as const, t: 40000 }]
+
+  async function faultyStore() {
+    setClock(() => T)
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    store.now = T
+    await store.replaceDayEvents('2026-07-21', FAULTY)
+    return store
+  }
+
+  it('is flagged with viewState faulty and an issue on the second in', async () => {
+    const store = await faultyStore()
+    expect(store.isFaulty).toBe(true)
+    expect(store.viewState.kind).toBe('faulty')
+    expect(store.analysis).toEqual({ status: 'faulty', issues: [{ index: 1, kind: 'double-in' }] })
+  })
+
+  it('has no worked time, breaks, segments or day span', async () => {
+    const store = await faultyStore()
+    expect(store.workedMs).toBe(0)
+    expect(store.breakMs).toBe(0)
+    expect(store.segments).toEqual([])
+    expect(store.daySpanMs).toBe(0)
+    expect(store.isClockedIn).toBe(false)
+    expect(store.isClockedOut).toBe(false)
+  })
+
+  it('blocks clock-in and clock-out', async () => {
+    const store = await faultyStore()
+    await store.clockIn()
+    await store.clockOut()
+    expect(store.worktime!.events).toEqual(FAULTY)
+  })
+
+  it('becomes valid again once corrected', async () => {
+    const store = await faultyStore()
+    await store.replaceDayEvents('2026-07-21', [FAULTY[0], { type: 'out', t: 32000 }, FAULTY[1], FAULTY[2]])
+    expect(store.isFaulty).toBe(false)
+    expect(store.viewState.kind).toBe('clocked-out')
+    const fixed = recompute(eventsToPunches(store.worktime!.events), DEFAULT_SETTINGS, secondsSinceMidnight(T))
+    expect(store.workedMs).toBe(fixed.workedSeconds * 1000)
+    expect(store.workedMs).toBeGreaterThan(0)
+  })
+
+  it('init restores the faulty state from storage', async () => {
+    setClock(() => T)
+    await putWorktime({ date: '2026-07-21', events: FAULTY })
+    const store = useClockStore()
+    await store.init()
+    expect(store.viewState.kind).toBe('faulty')
+  })
+
+  it('is archived as-is on rollover (no 23:59:59 close)', async () => {
+    const store = await faultyStore()
+    store.now = new Date('2026-07-22T00:00:05').getTime()
+    await store.checkRollover()
+    expect((await getHistoryDay('2026-07-21'))!.events).toEqual(FAULTY)
+    expect(store.worktime).toBeNull()
+  })
+})
+
+describe('clockOut ordering', () => {
+  it('never places the out before its in when the clock went backwards', async () => {
     const t = new Date('2026-07-21T08:00:00').getTime()
     setClock(() => t)
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
     await store.clockIn()
-    await store.replacePunches([{ in: 25200 }])
-    const { getWorktime } = await import('@/storage/worktime')
-    const fetched = await getWorktime()
-    expect(fetched).toStrictEqual(store.worktime)
+    setClock(() => t - 600_000)
+    await store.clockOut()
+    expect(store.isFaulty).toBe(false)
+    expect(store.worktime!.events[1]).toEqual({ type: 'out', t: store.worktime!.events[0].t })
+  })
+})
+
+describe('replaceDayEvents after midnight with a stale live record', () => {
+  it('archives yesterday first, then writes the edited day to history', async () => {
+    const store = useClockStore()
+    store.settings = { ...DEFAULT_SETTINGS }
+    setClock(() => new Date('2026-07-20T09:00:00').getTime())
+    await store.clockIn(28800)
+    // App stayed open past midnight; no rollover check has run yet.
+    setClock(() => new Date('2026-07-21T00:10:00').getTime())
+    await store.replaceDayEvents('2026-07-20', punchesToEvents([{ in: 28800, out: 61200 }]))
+    expect(store.worktime).toBeNull()
+    expect((await getHistoryDay('2026-07-20'))!.events).toEqual(punchesToEvents([{ in: 28800, out: 61200 }]))
   })
 })

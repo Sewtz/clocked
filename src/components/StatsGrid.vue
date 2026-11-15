@@ -17,11 +17,11 @@ const thirdColor = computed(() => (store.overtimeMs > 0 ? 'var(--color-overtime)
 <template>
   <div class="w-full max-w-xl grid grid-cols-3 gap-px bg-border">
     <div class="bg-bg px-5 py-4">
-      <div class="font-mono text-work text-xl font-bold">{{ worked }}</div>
+      <div class="font-mono text-work text-xl font-bold" data-testid="stat-worked">{{ worked }}</div>
       <div class="font-mono text-text-faint text-xs mt-1 tracking-widest uppercase">Worked</div>
     </div>
     <div class="bg-bg px-5 py-4">
-      <div class="font-mono text-break text-xl font-bold">{{ breaks }}</div>
+      <div class="font-mono text-break text-xl font-bold" data-testid="stat-breaks">{{ breaks }}</div>
       <div class="font-mono text-text-faint text-xs mt-1 tracking-widest uppercase">Breaks</div>
     </div>
     <div class="bg-bg px-5 py-4">
