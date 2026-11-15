@@ -20,7 +20,7 @@ onMounted(async () => {
 
 const history = computed(() => {
   const base = store.historyCache ?? {}
-  if (store.worktime && store.worktime.punches.length > 0) {
+  if (store.worktime && store.worktime.events.length > 0) {
     return { ...base, [store.worktime.date]: store.worktime }
   }
   return base

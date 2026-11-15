@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useClockStore } from '@/stores/clock'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import MilestoneHint from './MilestoneHint.vue'
+import { punchesToEvents } from '@/domain/events'
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -20,8 +21,7 @@ describe('MilestoneHint', () => {
   it('renders milestone hint when running and milestone exists', () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store.worktime = { date: '2026-07-21', punches: [{ in: 0 }] }
-    store._isClockedIn = true
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 0 }]) }
     store.now = 0
     const wrapper = mount(MilestoneHint)
     if (store.nextMilestone && store.viewState.kind === 'running') {

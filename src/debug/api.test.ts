@@ -1,3 +1,4 @@
+import { punchesToEvents } from '@/domain/events'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useClockStore } from '@/stores/clock'
@@ -42,9 +43,9 @@ describe('debug API', () => {
 
   it('setPunches writes through to IDB', async () => {
     await window.__clocked.setPunches([{ in: 0 }])
-    expect(window.__clocked.worktime!.punches).toHaveLength(1)
+    expect(window.__clocked.worktime!.events).toHaveLength(1)
     const persisted = await getWorktime()
-    expect(persisted!.punches[0].in).toBe(0)
+    expect(persisted!.events[0]).toEqual({ type: 'in', t: 0 })
   })
 
   it('tickTo updates now', () => {
@@ -72,7 +73,7 @@ describe('debug API', () => {
     const history = await window.__clocked.getHistory()
     expect(history).toHaveLength(1)
     expect(history[0].date).toBe('2026-07-21')
-    expect(history[0].punches).toEqual([{ in: 28800, out: 32400 }])
+    expect(history[0].events).toEqual(punchesToEvents([{ in: 28800, out: 32400 }]))
   })
 
   it('archives an open punch closed at 86399 on clear', async () => {
@@ -82,7 +83,7 @@ describe('debug API', () => {
     await window.__clocked.clear()
     const history = await getAllHistory()
     expect(history).toHaveLength(1)
-    expect(history[0].punches).toEqual([{ in: 28800, out: 86399 }])
+    expect(history[0].events).toEqual(punchesToEvents([{ in: 28800, out: 86399 }]))
   })
 
   it('clearHistory wipes the store', async () => {

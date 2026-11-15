@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { recompute } from '@/domain/recompute'
+import { analyse } from '@/domain/events'
 import { formatHHMM, secToTimeInput } from '@/domain/format'
 import type { Worktime, Settings } from '@/domain/types'
 
@@ -12,7 +13,10 @@ const props = defineProps<{
 
 const recomputed = computed(() => {
   if (!props.worktime || !props.settings) return null
-  return recompute(props.worktime.punches, props.settings, props.nowSec)
+  // Faulty days get no totals; the dedicated faulty view arrives with #12.
+  const a = analyse(props.worktime.events, { allowOpen: true })
+  if (a.status === 'faulty') return null
+  return recompute(a.punches, props.settings, props.nowSec)
 })
 
 const rows = computed(() => {
@@ -30,7 +34,7 @@ const breakMs = computed(() => (recomputed.value?.breakSeconds ?? 0) * 1000)
 </script>
 
 <template>
-  <div v-if="!worktime || worktime.punches.length === 0" class="font-mono text-xs text-text-faint py-4 text-center">
+  <div v-if="!worktime || worktime.events.length === 0" class="font-mono text-xs text-text-faint py-4 text-center">
     No events for this day.
   </div>
   <div v-else class="flex flex-col gap-2">

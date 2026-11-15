@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import CalendarGrid from './CalendarGrid.vue'
 import type { Worktime } from '@/domain/types'
+import { punchesToEvents } from '@/domain/events'
 
-const DAY_A: Worktime = { date: '2026-08-17', punches: [{ in: 28800 }] }
-const DAY_B: Worktime = { date: '2026-08-18', punches: [{ in: 0, out: 1 }] }
+const DAY_A: Worktime = { date: '2026-08-17', events: punchesToEvents([{ in: 28800 }]) }
+const DAY_B: Worktime = { date: '2026-08-18', events: punchesToEvents([{ in: 0, out: 1 }]) }
 
 describe('CalendarGrid', () => {
   it('renders header and 28 cells', () => {

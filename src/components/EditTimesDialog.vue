@@ -3,67 +3,52 @@ import { ref, reactive, computed } from 'vue'
 import { useClockStore } from '@/stores/clock'
 import { useScrollLock } from '@/components/ui/useScrollLock'
 import { secToTimeInput, timeInputToSec } from '@/domain/format'
+import { analyse } from '@/domain/events'
+import type { PunchEvent, PunchEventType } from '@/domain/types'
 
 const emit = defineEmits<{ close: [] }>()
 const store = useClockStore()
 useScrollLock()
 
-interface DraftPunch { in: string; out: string | null }
+interface DraftEvent { type: PunchEventType; time: string }
 
-const draft = reactive<DraftPunch[]>(
-  (store.worktime?.punches ?? []).map(p => ({
-    in: secToTimeInput(p.in),
-    out: p.out === undefined ? null : secToTimeInput(p.out),
-  })),
+const draft = reactive<DraftEvent[]>(
+  (store.worktime?.events ?? []).map(e => ({ type: e.type, time: secToTimeInput(e.t) })),
 )
 
-const rows = computed(() => {
-  const r: Array<{ punchIndex: number; field: 'in' | 'out'; label: string; value: string }> = []
-  draft.forEach((p, i) => {
-    r.push({ punchIndex: i, field: 'in', label: 'Clocked in', value: p.in })
-    if (p.out !== null) r.push({ punchIndex: i, field: 'out', label: 'Clocked out', value: p.out })
-  })
-  return r
-})
+const rows = computed(() =>
+  draft.map((e, i) => ({ index: i, label: e.type === 'in' ? 'Clocked in' : 'Clocked out', value: e.time })),
+)
 
 const error = ref<string | null>(null)
 
+function toEvents(): PunchEvent[] {
+  return draft.map(e => ({ type: e.type, t: timeInputToSec(e.time) }))
+}
+
+// Interim rule until #10: block saving a sequence that is out of order or faulty.
 function validate(): string | null {
-  const punches = draft.map(p => {
-    const inSec = timeInputToSec(p.in)
-    if (p.out === null) return { in: inSec }
-    const outSec = timeInputToSec(p.out)
-    return { in: inSec, out: outSec }
-  })
-  for (const p of punches) {
-    if (p.out !== undefined && p.out < p.in)
-      return 'Clocked-out time cannot be before clocked-in time.'
-  }
-  for (let i = 0; i < punches.length - 1; i++) {
-    const out = punches[i].out
-    if (out !== undefined && out > punches[i + 1].in)
-      return `Punch ${i + 1} ends after punch ${i + 2} starts.`
-  }
-  return null
+  const a = analyse(toEvents(), { allowOpen: true })
+  if (a.status === 'valid') return null
+  const issue = a.issues[0]
+  if (issue.kind === 'unsorted') return `Event ${issue.index + 1} is earlier than the event before it.`
+  return 'Clock-ins and clock-outs must alternate.'
 }
 
 error.value = validate()
 
-function onTimeInput(row: { punchIndex: number; field: 'in' | 'out' }, value: string) {
+function onTimeInput(index: number, value: string) {
   const m = /^(\d{1,2}):(\d{1,2})$/.exec(value.trim())
   if (!m) return
-  draft[row.punchIndex][row.field] = value
+  draft[index].time = value
   error.value = validate()
 }
 
 async function save() {
   const err = validate()
   if (err) { error.value = err; return }
-  const punches = draft.map(p => ({
-    in: timeInputToSec(p.in),
-    ...(p.out === null ? {} : { out: timeInputToSec(p.out) }),
-  }))
-  await store.replacePunches(punches)
+  if (!store.worktime) return
+  await store.replaceDayEvents(store.worktime.date, toEvents())
   emit('close')
 }
 </script>
@@ -88,14 +73,14 @@ async function save() {
       <div class="px-6 py-5 flex flex-col gap-3">
         <div
           v-for="row in rows"
-          :key="`${row.punchIndex}-${row.field}`"
+          :key="row.index"
           class="flex items-center justify-between"
         >
           <span class="font-mono text-sm text-text-dim">{{ row.label }}</span>
           <input
             type="time"
             :value="row.value"
-            @input="onTimeInput(row, ($event.target as HTMLInputElement).value)"
+            @input="onTimeInput(row.index, ($event.target as HTMLInputElement).value)"
             class="font-mono text-sm w-24 bg-surface border border-border-2 text-text px-2 py-1 text-right focus:outline-none focus:border-work"
           />
         </div>

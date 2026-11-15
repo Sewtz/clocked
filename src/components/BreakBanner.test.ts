@@ -5,6 +5,7 @@ import { useClockStore } from '@/stores/clock'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import { setClock } from '@/domain/clock'
 import BreakBanner from './BreakBanner.vue'
+import { punchesToEvents } from '@/domain/events'
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -19,9 +20,8 @@ describe('BreakBanner', () => {
   it('renders break info when on break1', () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store._isClockedIn = false
     // Simulate break1 state via mocked computed
-    store.worktime = { date: '2026-07-21', punches: [{ in: 0 }] }
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 0 }]) }
     // Use fake timers to set now past 6h
     const nowMs = new Date('2026-07-21T06:00:01').getTime()
     setClock(() => nowMs)
@@ -38,8 +38,7 @@ describe('BreakBanner', () => {
   it('does not render when breakEndsAt <= now (break elapsed)', () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
-    store._isClockedIn = true
-    store.worktime = { date: '2026-07-21', punches: [{ in: 0 }] }
+    store.worktime = { date: '2026-07-21', events: punchesToEvents([{ in: 0 }]) }
     // Set breakEndsAt in the past
     const pastMs = new Date('2026-07-21T06:31:00').getTime()
     setClock(() => pastMs)

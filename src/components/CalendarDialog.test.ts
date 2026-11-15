@@ -4,6 +4,7 @@ import { setActivePinia, createPinia, type Pinia } from 'pinia'
 import { useClockStore } from '@/stores/clock'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import CalendarDialog from './CalendarDialog.vue'
+import { punchesToEvents } from '@/domain/events'
 
 let pinia: Pinia
 
@@ -42,7 +43,7 @@ describe('CalendarDialog', () => {
     store.settings = { ...DEFAULT_SETTINGS }
     store.now = new Date(2026, 7, 19, 12, 0).getTime()
     store.historyCache = {
-      '2026-08-17': { date: '2026-08-17', punches: [{ in: 28800, out: 32400 }] },
+      '2026-08-17': { date: '2026-08-17', events: punchesToEvents([{ in: 28800, out: 32400 }]) },
     }
     const wrapper = mount(CalendarDialog, { global: { plugins: [pinia] } })
     const dayCell = wrapper.find('button[aria-label="2026-08-17"]')
@@ -66,7 +67,7 @@ describe('CalendarDialog', () => {
     const store = useClockStore()
     store.settings = { ...DEFAULT_SETTINGS }
     store.now = new Date(2026, 7, 19, 10, 0, 0).getTime()
-    store.worktime = { date: '2026-08-19', punches: [{ in: 28800 }] }
+    store.worktime = { date: '2026-08-19', events: punchesToEvents([{ in: 28800 }]) }
     const wrapper = mount(CalendarDialog, { global: { plugins: [pinia] } })
     expect(wrapper.text()).toContain('08:00 – 10:00')
   })

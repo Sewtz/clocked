@@ -2,48 +2,58 @@ import { describe, it, expect } from 'vitest'
 import { adjustStart, setFirstPunchIn } from './adjust'
 import type { Worktime } from './types'
 
+const day = (events: Worktime['events']): Worktime => ({ date: '2026-07-21', events })
+
 describe('adjustStart', () => {
-  it('decreases the first punch in by delta seconds', () => {
-    const wt: Worktime = { date: '2026-07-21', punches: [{ in: 28800 }] }
-    const r = adjustStart(wt, 300)
-    expect(r.punches[0].in).toBe(28500)
+  it('moves the first clock-in earlier by delta seconds', () => {
+    const r = adjustStart(day([{ type: 'in', t: 28800 }]), 300)
+    expect(r.events).toEqual([{ type: 'in', t: 28500 }])
   })
 
-  it('returns a new object, does not mutate input', () => {
-    const wt: Worktime = { date: '2026-07-21', punches: [{ in: 28800 }] }
+  it('only touches the first clock-in', () => {
+    const r = adjustStart(day([
+      { type: 'in', t: 28800 }, { type: 'out', t: 36000 }, { type: 'in', t: 40000 },
+    ]), 60)
+    expect(r.events).toEqual([
+      { type: 'in', t: 28740 }, { type: 'out', t: 36000 }, { type: 'in', t: 40000 },
+    ])
+  })
+
+  it('clamps at midnight', () => {
+    expect(adjustStart(day([{ type: 'in', t: 100 }]), 600).events).toEqual([{ type: 'in', t: 0 }])
+  })
+
+  it('returns a new object and does not mutate the input', () => {
+    const wt = day([{ type: 'in', t: 28800 }])
     Object.freeze(wt)
-    Object.freeze(wt.punches[0])
+    Object.freeze(wt.events)
+    Object.freeze(wt.events[0])
     const r = adjustStart(wt, 60)
     expect(r).not.toBe(wt)
-    expect(r.punches[0]).not.toBe(wt.punches[0])
-    expect(wt.punches[0].in).toBe(28800)
+    expect(wt.events[0].t).toBe(28800)
   })
 
-  it('throws on empty punches', () => {
-    const wt: Worktime = { date: '2026-07-21', punches: [] }
-    expect(() => adjustStart(wt, 5)).toThrow()
+  it('throws when there is no clock-in', () => {
+    expect(() => adjustStart(day([]), 5)).toThrow()
+    expect(() => adjustStart(day([{ type: 'out', t: 100 }]), 5)).toThrow()
   })
 })
 
 describe('setFirstPunchIn', () => {
-  it('updates the first punch in', () => {
-    const wt: Worktime = { date: '2026-07-21', punches: [{ in: 28800, out: 36000 }] }
-    const r = setFirstPunchIn(wt, 25200)
-    expect(r.punches[0].in).toBe(25200)
-    expect(r.punches[0].out).toBe(36000)
+  it('updates the first clock-in and keeps the rest', () => {
+    const r = setFirstPunchIn(day([{ type: 'in', t: 28800 }, { type: 'out', t: 36000 }]), 25200)
+    expect(r.events).toEqual([{ type: 'in', t: 25200 }, { type: 'out', t: 36000 }])
   })
 
-  it('does not mutate input', () => {
-    const wt: Worktime = { date: '2026-07-21', punches: [{ in: 28800 }] }
-    Object.freeze(wt)
-    Object.freeze(wt.punches[0])
-    const r = setFirstPunchIn(wt, 25200)
-    expect(r.punches[0].in).toBe(25200)
-    expect(wt.punches[0].in).toBe(28800)
+  it('keeps the list sorted when the new time moves past later events', () => {
+    const r = setFirstPunchIn(day([{ type: 'in', t: 28800 }, { type: 'out', t: 36000 }]), 40000)
+    expect(r.events).toEqual([{ type: 'out', t: 36000 }, { type: 'in', t: 40000 }])
   })
 
-  it('throws on empty punches', () => {
-    const wt: Worktime = { date: '2026-07-21', punches: [] }
-    expect(() => setFirstPunchIn(wt, 0)).toThrow()
+  it('does not mutate the input', () => {
+    const wt = day([{ type: 'in', t: 28800 }])
+    Object.freeze(wt.events[0])
+    setFirstPunchIn(wt, 25200)
+    expect(wt.events[0].t).toBe(28800)
   })
 })

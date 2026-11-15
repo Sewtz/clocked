@@ -1,6 +1,7 @@
 import { now, setClock } from '@/domain/clock'
 import { todayString, secondsSinceMidnight } from '@/domain/date'
 import { getAllHistory } from '@/storage/history'
+import { punchesToEvents } from '@/domain/events'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import type { Settings } from '@/domain/types'
 import type { useClockStore } from '@/stores/clock'
@@ -63,10 +64,8 @@ export function installDebugApi(store: ReturnType<typeof useClockStore>) {
     },
 
     setPunches: async (punches: Array<{ in: number; out?: number }>) => {
-      if (!store.worktime) {
-        store.worktime = { date: todayString(new Date(now())), punches: [] }
-      }
-      await store.replacePunches(punches)
+      // Interim: replaced by setEvents in #9.
+      await store.replaceDayEvents(todayString(new Date(now())), punchesToEvents(punches))
     },
 
     clear: async () => {

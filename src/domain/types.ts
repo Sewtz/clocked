@@ -26,9 +26,10 @@ export interface Punch {
   out?: number
 }
 
+/** One local calendar day. `events` is sorted by `t` (stable on ties); validity is derived via `analyse()`. */
 export interface Worktime {
   date: string
-  punches: Punch[]
+  events: PunchEvent[]
 }
 
 export type PunchEventType = 'in' | 'out'
@@ -83,3 +84,4 @@ export type ViewState =
   | { kind: 'running' }
   | { kind: 'break' }
   | { kind: 'clocked-out' }
+  | { kind: 'faulty' }

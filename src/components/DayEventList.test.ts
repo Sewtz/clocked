@@ -3,8 +3,9 @@ import { mount } from '@vue/test-utils'
 import DayEventList from './DayEventList.vue'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import type { Worktime } from '@/domain/types'
+import { punchesToEvents } from '@/domain/events'
 
-const CLOSED_DAY: Worktime = { date: '2026-08-17', punches: [{ in: 28800, out: 32400 }] }
+const CLOSED_DAY: Worktime = { date: '2026-08-17', events: punchesToEvents([{ in: 28800, out: 32400 }]) }
 
 describe('DayEventList', () => {
   it('shows a message when worktime is null', () => {
@@ -16,7 +17,7 @@ describe('DayEventList', () => {
 
   it('shows a message when the day has no punches', () => {
     const wrapper = mount(DayEventList, {
-      props: { worktime: { date: '2026-08-17', punches: [] }, settings: DEFAULT_SETTINGS, nowSec: 0 },
+      props: { worktime: { date: '2026-08-17', events: punchesToEvents([]) }, settings: DEFAULT_SETTINGS, nowSec: 0 },
     })
     expect(wrapper.text()).toContain('No events for this day.')
   })
@@ -35,7 +36,7 @@ describe('DayEventList', () => {
   it('renders an open punch with a live end time', () => {
     const wrapper = mount(DayEventList, {
       props: {
-        worktime: { date: '2026-08-17', punches: [{ in: 28800 }] },
+        worktime: { date: '2026-08-17', events: punchesToEvents([{ in: 28800 }]) },
         settings: DEFAULT_SETTINGS,
         nowSec: 36000,
       },
@@ -48,7 +49,7 @@ describe('DayEventList', () => {
   it('renders a mandatory break segment when the trigger fires', () => {
     const wrapper = mount(DayEventList, {
       props: {
-        worktime: { date: '2026-08-17', punches: [{ in: 0 }] },
+        worktime: { date: '2026-08-17', events: punchesToEvents([{ in: 0 }]) },
         settings: DEFAULT_SETTINGS,
         nowSec: 25200,
       },
@@ -62,7 +63,7 @@ describe('DayEventList', () => {
   it('renders gap and work segments for a multi-punch day', () => {
     const wrapper = mount(DayEventList, {
       props: {
-        worktime: { date: '2026-08-17', punches: [{ in: 28800, out: 32400 }, { in: 39600, out: 43200 }] },
+        worktime: { date: '2026-08-17', events: punchesToEvents([{ in: 28800, out: 32400 }, { in: 39600, out: 43200 }]) },
         settings: DEFAULT_SETTINGS,
         nowSec: 43200,
       },

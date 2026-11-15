@@ -30,7 +30,7 @@ const cells = computed(() => {
     out.push({
       date: d,
       ymd: key,
-      hasData: !!props.history[key]?.punches?.length,
+      hasData: !!props.history[key]?.events?.length,
       isToday: key === ymd(props.today),
       isSelected: key === props.selectedDate,
     })

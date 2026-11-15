@@ -36,7 +36,7 @@ function segOpacity(type: string): number {
 }
 
 const span = computed(() => store.daySpanMs / 1000)
-const firstIn = computed(() => (store.worktime ? store.worktime.punches[0].in : 0))
+const firstIn = computed(() => store.worktime?.events.find(e => e.type === 'in')?.t ?? 0)
 const nowFmt = computed(() => fmtTime(span.value + firstIn.value))
 
 const trackSegs = computed(() =>
