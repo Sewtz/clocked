@@ -144,4 +144,14 @@ describe('CalendarDialog', () => {
     // 08:00-17:00 without a gap: break1 injected after 6h -> 8h30 worked
     expect(wrapper.find('[data-testid="day-worked"]').text()).toBe('08:30')
   })
+
+  it('shows the selected day written out above its events', async () => {
+    const wrapper = mountDialog(new Date(2026, 7, 19, 12, 0))
+    const label = () => wrapper.find('[data-testid="selected-day-label"]').text()
+    const expected = (d: Date) => d.toLocaleDateString([], { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })
+    expect(label()).toBe(expected(new Date(2026, 7, 19)))
+    await wrapper.find('button[aria-label="2026-08-17"]').trigger('click')
+    expect(label()).toBe(expected(new Date(2026, 7, 17)))
+    expect(wrapper.find('button[aria-label="2026-08-17"]').attributes('aria-pressed')).toBe('true')
+  })
 })
