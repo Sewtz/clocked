@@ -19,10 +19,11 @@ test.describe('a normal workday', () => {
     await advanceTo(page, at('17:00'))
     await page.getByRole('button', { name: 'Clock Out' }).click()
 
-    // 4h + 4h15m worked. The 45 min lunch covers break1 (30) + break2 (15) and
-    // does not reduce worked time (ADR-035).
+    // 4h + 4h15m worked. The day passes 6h but not 9h, so only break1 (30 min)
+    // applies and is fitted into the 45 min lunch (ADR-042); it does not reduce
+    // worked time (ADR-035).
     await expect(stat(page, 'worked')).toHaveText('08:15')
-    await expect(stat(page, 'breaks')).toHaveText('00:45')
+    await expect(stat(page, 'breaks')).toHaveText('00:30')
     const timeline = page.getByRole('button', { name: 'Edit times' })
     await expect(timeline).toContainText('08:00 → 12:00')
     await expect(timeline).toContainText('12:45 → 17:00')
