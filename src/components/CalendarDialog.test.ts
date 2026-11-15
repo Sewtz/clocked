@@ -165,6 +165,7 @@ describe('CalendarDialog', () => {
     await wrapper.find('button[aria-label="Share"]').trigger('click')
     const share = wrapper.findComponent(ShareDialog)
     expect(share.exists()).toBe(true)
+    await share.findAll('button').find(b => b.text() === 'Last week')!.trigger('click')
     await vi.waitFor(() => expect(share.find('button[aria-label="Fix 2026-08-12"]').exists()).toBe(true))
     await share.find('button[aria-label="Fix 2026-08-12"]').trigger('click')
     expect(wrapper.findComponent(ShareDialog).exists()).toBe(false)

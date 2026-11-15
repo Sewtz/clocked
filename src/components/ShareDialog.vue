@@ -27,8 +27,8 @@ const PRESETS: Array<{ id: RangePreset; label: string }> = [
 ]
 
 const today = new Date(now())
-const preset = ref<RangePreset | null>('last-week')
-const range = ref<DateRange>(presetRange('last-week', today))
+const preset = ref<RangePreset | null>('this-week')
+const range = ref<DateRange>(presetRange('this-week', today))
 
 function choose(p: RangePreset) {
   preset.value = p
@@ -82,7 +82,7 @@ async function share() {
     csv: toCsv(d),
     subject: mailSubject(d.range),
     text: toMailText(d),
-    fallbackText: toMailText(d, { attachmentHint: 'downloaded' }),
+    fallbackText: toMailText(d, { variant: 'summary' }),
   })
   if (result === 'shared') emit('close')
   else if (result === 'downloaded') status.value = `Saved ${exportFileName(d.range)} — attach it to the mail draft.`

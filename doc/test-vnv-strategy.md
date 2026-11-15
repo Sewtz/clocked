@@ -36,7 +36,7 @@ Cases:
 #### Export (`export.ts`, `share.ts`)
 
 - Presets (Monday weeks, months, year boundary), inclusive date lists; day rows for ok/open/faulty/empty days; totals over valid days with faulty dates listed.
-- CSV: BOM, `;`, CRLF, exact rows incl. TOTAL, quoting, no cell starting with `=`/`+`/`-`/`@` outside the `*_min` columns. Mail text: lines, faulty note, attached vs downloaded hint, open day, empty period.
+- CSV: BOM, `;`, CRLF, exact rows incl. TOTAL, quoting, no cell starting with `=`/`+`/`-`/`@` outside the `*_min` columns. Mail text: exact table (header, rule, rows, total row, column separators aligned), faulty list, summary variant for the fallback, open day, empty period.
 - `shareExport`: share sheet with file/subject/text; cancel → no fallback; no file sharing or `NotAllowedError` → download + `mailto:`. `mailtoUrl` encodes and shortens long bodies.
 
 #### Day rollover

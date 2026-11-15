@@ -35,12 +35,27 @@ async function mountDialog(props: Record<string, string> = {}) {
   await vi.waitFor(() => expect(w.find('[data-testid="share-preview"]').exists()).toBe(true))
   return w
 }
+async function mountLastWeek(props: Record<string, string> = {}) {
+  const w = await mountDialog(props)
+  await w.findAll('button').find(b => b.text() === 'Last week')!.trigger('click')
+  await flushPromises()
+  await vi.waitFor(() => expect(w.find('input[aria-label="From"]').element).toHaveProperty('value', '2026-11-09'))
+  await vi.waitFor(() => expect(w.find('[data-testid="share-worked"]').text()).toBe('15:30'))
+  return w
+}
 const text = (w: Awaited<ReturnType<typeof mountDialog>>, id: string) => w.find(`[data-testid="${id}"]`).text()
 
 describe('ShareDialog', () => {
-  it('defaults to last week and previews its totals', async () => {
+  it('defaults to this week', async () => {
     const w = await mountDialog()
-    expect(w.find('button[aria-pressed="true"]').text()).toBe('Last week')
+    expect(w.find('button[aria-pressed="true"]').text()).toBe('This week')
+    expect((w.find('input[aria-label="From"]').element as HTMLInputElement).value).toBe('2026-11-16')
+    expect((w.find('input[aria-label="To"]').element as HTMLInputElement).value).toBe('2026-11-18')
+    expect(text(w, 'share-worked')).toBe('01:00')
+  })
+
+  it('previews the totals of last week', async () => {
+    const w = await mountLastWeek()
     expect((w.find('input[aria-label="From"]').element as HTMLInputElement).value).toBe('2026-11-09')
     expect((w.find('input[aria-label="To"]').element as HTMLInputElement).value).toBe('2026-11-15')
     expect(text(w, 'share-worked')).toBe('15:30')
@@ -50,29 +65,30 @@ describe('ShareDialog', () => {
   })
 
   it('warns about faulty days in the range', async () => {
-    const w = await mountDialog({ selectableFrom: '2026-10-26', selectableTo: '2026-11-22' })
+    const w = await mountLastWeek({ selectableFrom: '2026-10-26', selectableTo: '2026-11-22' })
     expect(text(w, 'share-faulty')).toContain('1 day has inconsistent clock times')
     await w.find('button[aria-label="Fix 2026-11-11"]').trigger('click')
     expect(w.emitted('jump')).toEqual([['2026-11-11']])
   })
 
   it('lists faulty days outside the calendar grid without a jump button', async () => {
-    const w = await mountDialog({ selectableFrom: '2026-11-16', selectableTo: '2026-12-13' })
+    const w = await mountLastWeek({ selectableFrom: '2026-11-16', selectableTo: '2026-12-13' })
     expect(w.find('button[aria-label="Fix 2026-11-11"]').exists()).toBe(false)
     expect(text(w, 'share-faulty')).toContain('2026-11-11')
   })
 
   it('presets switch the range', async () => {
     const w = await mountDialog()
-    await w.findAll('button').find(b => b.text() === 'This week')!.trigger('click')
-    await flushPromises()
-    await vi.waitFor(() => expect(text(w, 'share-worked')).toBe('01:00'))
-    expect((w.find('input[aria-label="From"]').element as HTMLInputElement).value).toBe('2026-11-16')
     expect(w.find('[data-testid="share-faulty"]').exists()).toBe(false)
+    await w.findAll('button').find(b => b.text() === 'Last month')!.trigger('click')
+    await flushPromises()
+    expect((w.find('input[aria-label="From"]').element as HTMLInputElement).value).toBe('2026-10-01')
+    expect((w.find('input[aria-label="To"]').element as HTMLInputElement).value).toBe('2026-10-31')
+    await vi.waitFor(() => expect(text(w, 'share-worked')).toBe('00:00'))
   })
 
   it('a custom From–To clears the preset; a reversed range disables Share', async () => {
-    const w = await mountDialog()
+    const w = await mountLastWeek()
     await w.find('input[aria-label="From"]').setValue('2026-11-10')
     await flushPromises()
     expect(w.find('[aria-label="Period"] button[aria-pressed="true"]').exists()).toBe(false)
@@ -86,21 +102,23 @@ describe('ShareDialog', () => {
 
   it('shares the CSV and mail text for the range; closes when shared', async () => {
     shareExport.mockResolvedValue('shared')
-    const w = await mountDialog()
+    const w = await mountLastWeek()
     await w.findAll('button').find(b => b.text() === 'Share')!.trigger('click')
     await flushPromises()
     const payload = shareExport.mock.calls[0][0]
     expect(payload.fileName).toBe('clocked_2026-11-09_2026-11-15.csv')
     expect(payload.subject).toBe('Working times 2026-11-09 – 2026-11-15')
     expect(payload.csv).toContain('2026-11-11;Wed;faulty')
+    expect(payload.text).toContain('Day            | In    | Out   | Worked | Breaks | Balance')
     expect(payload.text).toContain('see the attached file')
+    expect(payload.fallbackText).not.toContain('|')
     expect(payload.fallbackText).toContain('please attach the downloaded file')
     expect(w.emitted('close')).toBeTruthy()
   })
 
   it('stays open with a hint after the download fallback; nothing on cancel', async () => {
     shareExport.mockResolvedValueOnce('downloaded').mockResolvedValueOnce('cancelled')
-    const w = await mountDialog()
+    const w = await mountLastWeek()
     const btn = w.findAll('button').find(b => b.text() === 'Share')!
     await btn.trigger('click')
     await flushPromises()

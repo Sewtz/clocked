@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   presetRange, datesInRange, summariseDay, buildExport, toCsv, toMailText,
-  exportFileName, mailSubject, balanceText, CSV_HEADER, type ExportContext,
+  exportFileName, mailSubject, balanceText, signedDur, CSV_HEADER, type ExportContext,
 } from './export'
 import { DEFAULT_SETTINGS } from './types'
 import type { PunchEvent, Worktime } from './types'
@@ -152,36 +152,65 @@ describe('mail text', () => {
     expect(exportFileName(LAST_WEEK)).toBe('clocked_2026-11-09_2026-11-15.csv')
   })
 
-  it('lists days with events, flags faulty days, and totals', () => {
-    const text = toMailText(data)
-    expect(text.split('\n')).toEqual([
+  it('formats the days with events as a table with a total row, then the faulty days', () => {
+    const rule = ['-'.repeat(14), '-'.repeat(5), '-'.repeat(5), '-'.repeat(6), '-'.repeat(6), '-'.repeat(7)].join('-+-')
+    expect(toMailText(data).split('\n')).toEqual([
       'Working times 2026-11-09 – 2026-11-15',
       '',
-      'Mon 2026-11-09   08:00–16:30   worked 08:00   breaks 00:30   on target',
-      'Tue 2026-11-10   07:45–18:00   worked 09:30   breaks 00:45   01:30 over',
-      'Wed 2026-11-11   FAULTY – clock times inconsistent (in 08:15, in 12:45, out 17:00)',
-      'Fri 2026-11-13   08:00–12:00   worked 04:00   breaks 00:00   04:00 under',
+      'Day            | In    | Out   | Worked | Breaks | Balance',
+      rule,
+      'Mon 2026-11-09 | 08:00 | 16:30 |  08:00 |  00:30 |  ±00:00',
+      'Tue 2026-11-10 | 07:45 | 18:00 |  09:30 |  00:45 |  +01:30',
+      'Wed 2026-11-11 | 08:15 | 17:00 |      – |      – |  FAULTY',
+      'Fri 2026-11-13 | 08:00 | 12:00 |  04:00 |  00:00 |  -04:00',
+      rule,
+      'Total (3 days) |       |       |  21:30 |  01:15 |  -02:30',
       '',
-      'Total (3 days): worked 21:30 · breaks 01:15 · 02:30 under',
-      'Note: 1 day has inconsistent clock times and is not included in the totals (2026-11-11).',
+      '1 day has inconsistent clock times and is not included in the totals:',
+      '  Wed 2026-11-11: in 08:15, in 12:45, out 17:00',
       '',
       'Details: see the attached file clocked_2026-11-09_2026-11-15.csv.',
     ])
   })
 
-  it('asks to attach the downloaded file in the fallback', () => {
-    expect(toMailText(data, { attachmentHint: 'downloaded' }))
-      .toContain('please attach the downloaded file clocked_2026-11-09_2026-11-15.csv')
+  it('all table rows have the same width', () => {
+    const table = toMailText(data).split('\n').slice(2, 10)
+    // trailing spaces are trimmed, so compare the column separators' positions instead
+    const pipes = (l: string) => [...l].flatMap((c, i) => (c === '|' ? [i] : []))
+    for (const line of table.filter(l => l.includes('|'))) expect(pipes(line)).toEqual(pipes(table[0]))
+  })
+
+  it('the fallback is a short summary without the table, asking to attach the file', () => {
+    expect(toMailText(data, { variant: 'summary' }).split('\n')).toEqual([
+      'Working times 2026-11-09 – 2026-11-15',
+      '',
+      'Worked:  21:30',
+      'Breaks:  01:15',
+      'Balance: -02:30 (3 days)',
+      '',
+      '1 day has inconsistent clock times and is not included in the totals:',
+      '  Wed 2026-11-11: in 08:15, in 12:45, out 17:00',
+      '',
+      'Details: please attach the downloaded file clocked_2026-11-09_2026-11-15.csv.',
+    ])
   })
 
   it('shows an open day as running until now', () => {
     const today = buildExport({ from: '2026-11-15', to: '2026-11-15' }, { '2026-11-15': day('2026-11-15', [IN('08:00')]) }, ctx)
-    expect(toMailText(today)).toContain('Sun 2026-11-15   08:00–now   worked 02:00')
+    expect(toMailText(today)).toContain('Sun 2026-11-15 | 08:00 | now |  02:00 |')
   })
 
   it('says so when nothing was recorded', () => {
     expect(toMailText(buildExport({ from: '2026-11-14', to: '2026-11-15' }, {}, ctx)))
       .toContain('No working times recorded in this period.')
+  })
+})
+
+describe('signedDur', () => {
+  it('signs the mail balance', () => {
+    expect(signedDur(5400)).toBe('+01:30')
+    expect(signedDur(-6900)).toBe('-01:55')
+    expect(signedDur(20)).toBe('±00:00')
   })
 })
 

@@ -193,28 +193,67 @@ export function mailSubject(range: DateRange): string {
   return range.from === range.to ? `Working times ${range.from}` : `Working times ${range.from} – ${range.to}`
 }
 
-/** Plain-text summary for the mail body (days with events only, plus totals). */
-export function toMailText(data: ExportData, opts: { attachmentHint: 'attached' | 'downloaded' } = { attachmentHint: 'attached' }): string {
+/** Signed duration for the mail table ("+01:30", "-01:55", "±00:00"); text only, never in the CSV. */
+export function signedDur(sec: number): string {
+  if (Math.abs(sec) < 60) return '±00:00'
+  return `${sec > 0 ? '+' : '-'}${dur(Math.abs(sec))}`
+}
+
+/**
+ * Fixed-width text table with `|` separators. Mail bodies are plain text, so columns only
+ * line up exactly in a monospace view; the separators keep it readable in proportional fonts.
+ */
+export function textTable(header: string[], rows: string[][], footer: string[], rightAligned: boolean[]): string[] {
+  const all = [header, ...rows, footer]
+  const widths = header.map((_, i) => Math.max(...all.map(r => (r[i] ?? '').length)))
+  const fmt = (r: string[]) =>
+    r.map((c, i) => (rightAligned[i] ? (c ?? '').padStart(widths[i]) : (c ?? '').padEnd(widths[i]))).join(' | ').trimEnd()
+  const rule = widths.map(w => '-'.repeat(w)).join('-+-')
+  return [fmt(header), rule, ...rows.map(fmt), rule, fmt(footer)]
+}
+
+export type MailTextVariant = 'table' | 'summary'
+
+/**
+ * Mail body. `table` (share sheet, CSV attached): one table row per day with events plus a
+ * total row. `summary` (mailto fallback, length-limited): totals only, asking to attach
+ * the downloaded CSV.
+ */
+export function toMailText(data: ExportData, opts: { variant: MailTextVariant } = { variant: 'table' }): string {
+  const t = data.totals
   const out: string[] = [mailSubject(data.range), '']
   const withEvents = data.days.filter(d => d.status !== 'empty')
-  if (withEvents.length === 0) out.push('No working times recorded in this period.')
-  for (const d of withEvents) {
-    const day = `${d.weekday} ${d.date}`
-    if (d.status === 'faulty') {
-      out.push(`${day}   FAULTY – clock times inconsistent (${eventsText(d.events)})`)
-      continue
-    }
-    const span = `${clock(d.firstIn)}–${d.status === 'open' ? 'now' : clock(d.lastOut)}`
-    out.push(`${day}   ${span}   worked ${dur(d.workedSec!)}   breaks ${dur(d.breakSec!)}   ${balanceText(d.balanceSec!)}`)
+  const dayWord = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`
+
+  if (withEvents.length === 0) {
+    out.push('No working times recorded in this period.')
+  } else if (opts.variant === 'table') {
+    const rows = withEvents.map(d => {
+      const day = `${d.weekday} ${d.date}`
+      if (d.status === 'faulty') return [day, clock(d.firstIn), clock(d.lastOut), '–', '–', 'FAULTY']
+      return [day, clock(d.firstIn), d.status === 'open' ? 'now' : clock(d.lastOut),
+        dur(d.workedSec!), dur(d.breakSec!), signedDur(d.balanceSec!)]
+    })
+    out.push(...textTable(
+      ['Day', 'In', 'Out', 'Worked', 'Breaks', 'Balance'],
+      rows,
+      [`Total (${dayWord(t.dayCount)})`, '', '', dur(t.workedSec), dur(t.breakSec), signedDur(t.balanceSec)],
+      [false, false, false, true, true, true],
+    ))
+  } else {
+    out.push(`Worked:  ${dur(t.workedSec)}`)
+    out.push(`Breaks:  ${dur(t.breakSec)}`)
+    out.push(`Balance: ${signedDur(t.balanceSec)} (${dayWord(t.dayCount)})`)
   }
-  const t = data.totals
-  out.push('')
-  out.push(`Total (${t.dayCount} ${t.dayCount === 1 ? 'day' : 'days'}): worked ${dur(t.workedSec)} · breaks ${dur(t.breakSec)} · ${balanceText(t.balanceSec)}`)
-  if (t.faultyDates.length > 0) {
-    out.push(`Note: ${t.faultyDates.length} ${t.faultyDates.length === 1 ? 'day has' : 'days have'} inconsistent clock times and ${t.faultyDates.length === 1 ? 'is' : 'are'} not included in the totals (${t.faultyDates.join(', ')}).`)
+
+  const faulty = data.days.filter(d => d.status === 'faulty')
+  if (faulty.length > 0) {
+    out.push('')
+    out.push(`${faulty.length === 1 ? '1 day has' : `${faulty.length} days have`} inconsistent clock times and ${faulty.length === 1 ? 'is' : 'are'} not included in the totals:`)
+    for (const d of faulty) out.push(`  ${d.weekday} ${d.date}: ${eventsText(d.events)}`)
   }
   out.push('')
-  out.push(opts.attachmentHint === 'attached'
+  out.push(opts.variant === 'table'
     ? `Details: see the attached file ${exportFileName(data.range)}.`
     : `Details: please attach the downloaded file ${exportFileName(data.range)}.`)
   return out.join('\n')

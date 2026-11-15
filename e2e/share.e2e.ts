@@ -36,7 +36,8 @@ test('share sheet: the CSV is attached and the mail text summarises the week', a
   await seedWeek(page)
   await openShare(page)
 
-  await expect(page.getByRole('button', { name: 'Last week' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'This week' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Last week' }).click()
   await expect(page.getByTestId('share-worked')).toHaveText('08:00')
   await expect(page.getByTestId('share-faulty')).toContainText('1 day has inconsistent clock times')
 
@@ -51,8 +52,9 @@ test('share sheet: the CSV is attached and the mail text summarises the week', a
   expect(shared.bytes).toEqual([0xef, 0xbb, 0xbf]) // UTF-8 BOM for Excel
   expect(shared.content).toContain('2026-11-09;Mon;ok;08:00;16:30;08:00;00:30;on target')
   expect(shared.content).toContain('2026-11-11;Wed;faulty;08:15;17:00')
-  expect(shared.text).toContain('Mon 2026-11-09   08:00–16:30   worked 08:00')
-  expect(shared.text).toContain('FAULTY')
+  expect(shared.text).toContain('Day            | In    | Out   | Worked | Breaks | Balance')
+  expect(shared.text).toContain('Mon 2026-11-09 | 08:00 | 16:30 |  08:00 |  00:30 |  ±00:00')
+  expect(shared.text).toContain('Wed 2026-11-11 | 08:15 | 17:00 |      – |      – |  FAULTY')
   expect(shared.text).toContain('see the attached file clocked_2026-11-09_2026-11-15.csv')
 })
 
@@ -83,6 +85,7 @@ test('faulty day: "Fix" jumps to it in the calendar', async ({ page }) => {
   await openAppAt(page, NOW)
   await seedWeek(page)
   await openShare(page)
+  await page.getByRole('button', { name: 'Last week' }).click()
   await page.getByRole('button', { name: 'Fix 2026-11-11' }).click()
   await expect(page.getByRole('dialog', { name: 'Share working times' })).toBeHidden()
   await expect(page.getByRole('button', { name: '2026-11-11, faulty' })).toHaveAttribute('aria-pressed', 'true')
