@@ -118,11 +118,12 @@ Input: `punches` (in/out seconds-since-midnight) + `settings` + `nowSeconds` (se
 1. Compute `workedGross = Σ(out_i − in_i)` over closed punches; an open punch counts `now − in`.
 2. Compute gaps = `in_{i+1} − out_i` between consecutive punches.
 3. **Gap classification (per-break, ordered):**
+   - A break only **applies** once the day's worked time reaches its trigger: `workedGross >= break_trigger` (ADR-042). A break that doesn't apply is neither fitted nor injected.
    - Walk gaps chronologically.
-   - A gap satisfies **break1** iff `gap > break1_duration`. The first `break1_duration` of that gap counts as break1; the remainder is "clocked out" (neither work nor break).
-   - After break1 is satisfied (by gap or by an elapsed mandatory pause), a later gap satisfies **break2** iff `gap > break2_duration`. The first `break2_duration` of that gap counts as break2; remainder is "clocked out".
-   - A single very long gap (`> break1_duration + break2_duration`) satisfies both breaks in one pass.
-   - Short gaps (`<=` relevant break duration) do not satisfy any break; they remain `gap-break` segments but contribute 0 to `breakSeconds`.
+   - An applicable **break1** is fitted into the first gap with `gap >= break1_duration` (ADR-028). The first `break1_duration` of that gap becomes a `mandatory-break` segment; the remainder is a neutral `gap`.
+   - After break1 is fitted, an applicable **break2** is fitted into the remaining part of that gap or a later gap with `>= break2_duration`.
+   - A gap taken **before** the trigger still counts once the trigger is reached (breaks may be taken in advance). Until then the gap is neutral.
+   - Gaps that don't fit an applicable break stay neutral `gap` segments and contribute 0 to `breakSeconds`.
 4. **Mandatory pause budget:** For each enabled break NOT satisfied by a gap, a mandatory pause of that break's full duration may be injected at its trigger point (subject to live/elapsed rule below).
 5. **Walk punches** accumulating `workedElapsed` (work seconds, excluding gaps and mandatory pauses).
    - When `workedElapsed` crosses `break1_trigger` and break1 not gap-satisfied:
