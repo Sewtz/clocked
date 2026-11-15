@@ -4,51 +4,98 @@ import { useClockStore } from '@/stores/clock'
 import { useScrollLock } from '@/components/ui/useScrollLock'
 import { secToTimeInput, timeInputToSec } from '@/domain/format'
 import { analyse } from '@/domain/events'
-import type { PunchEvent, PunchEventType } from '@/domain/types'
+import { now } from '@/domain/clock'
+import { todayString, secondsSinceMidnight } from '@/domain/date'
+import type { AnalysisIssueKind, PunchEvent, PunchEventType } from '@/domain/types'
 
+const props = defineProps<{
+  /** Day to edit (YYYY-MM-DD). Defaults to today. */
+  date?: string
+}>()
 const emit = defineEmits<{ close: [] }>()
 const store = useClockStore()
 useScrollLock()
 
-interface DraftEvent { type: PunchEventType; time: string }
+const today = todayString(new Date(now()))
+const date = props.date ?? today
+const isToday = date === today
 
+const ISSUE_TEXT: Record<AnalysisIssueKind, string> = {
+  'starts-with-out': 'Day starts with a clock-out',
+  'double-in': 'Two clock-ins in a row',
+  'double-out': 'Two clock-outs in a row',
+  'open-past-day': 'Past day ends clocked in',
+  'unsorted': 'Earlier than the event before it',
+}
+
+interface DraftEvent { id: number; type: PunchEventType; time: string }
+
+let nextId = 0
+const source: readonly PunchEvent[] = isToday
+  ? store.worktime?.events ?? []
+  : store.historyCache?.[date]?.events ?? []
 const draft = reactive<DraftEvent[]>(
-  (store.worktime?.events ?? []).map(e => ({ type: e.type, time: secToTimeInput(e.t) })),
+  source.map(e => ({ id: nextId++, type: e.type, time: secToTimeInput(e.t) })),
 )
 
-const rows = computed(() =>
-  draft.map((e, i) => ({ index: i, label: e.type === 'in' ? 'Clocked in' : 'Clocked out', value: e.time })),
-)
-
-const error = ref<string | null>(null)
+const TIME_RE = /^(\d{1,2}):(\d{1,2})$/
 
 function toEvents(): PunchEvent[] {
   return draft.map(e => ({ type: e.type, t: timeInputToSec(e.time) }))
 }
 
-// Interim rule until #10: block saving a sequence that is out of order or faulty.
-function validate(): string | null {
-  const a = analyse(toEvents(), { allowOpen: true })
-  if (a.status === 'valid') return null
-  const issue = a.issues[0]
-  if (issue.kind === 'unsorted') return `Event ${issue.index + 1} is earlier than the event before it.`
-  return 'Clock-ins and clock-outs must alternate.'
+const analysis = computed(() => analyse(toEvents(), { allowOpen: isToday }))
+const isFaulty = computed(() => analysis.value.status === 'faulty')
+
+const issuesByIndex = computed(() => {
+  const map = new Map<number, string[]>()
+  if (analysis.value.status === 'faulty') {
+    for (const issue of analysis.value.issues) {
+      map.set(issue.index, [...(map.get(issue.index) ?? []), ISSUE_TEXT[issue.kind]])
+    }
+  }
+  return map
+})
+
+/** Stable re-sort by time (Array.prototype.sort is stable). */
+function sortDraft() {
+  draft.sort((a, b) => timeInputToSec(a.time) - timeInputToSec(b.time))
 }
 
-error.value = validate()
+function onTimeInput(row: DraftEvent, value: string) {
+  if (!TIME_RE.test(value.trim())) return
+  row.time = value
+}
 
-function onTimeInput(index: number, value: string) {
-  const m = /^(\d{1,2}):(\d{1,2})$/.exec(value.trim())
-  if (!m) return
-  draft[index].time = value
-  error.value = validate()
+function remove(row: DraftEvent) {
+  const i = draft.findIndex(r => r.id === row.id)
+  if (i >= 0) draft.splice(i, 1)
+}
+
+// --- add row ---
+function oppositeOfLast(): PunchEventType {
+  return draft[draft.length - 1]?.type === 'in' ? 'out' : 'in'
+}
+function defaultAddTime(): string {
+  if (isToday) return secToTimeInput(secondsSinceMidnight(now()))
+  return draft[draft.length - 1]?.time ?? '08:00'
+}
+const addType = ref<PunchEventType>(oppositeOfLast())
+const addTime = ref(defaultAddTime())
+
+function onAddTimeInput(value: string) {
+  if (TIME_RE.test(value.trim())) addTime.value = value
+}
+
+function add() {
+  draft.push({ id: nextId++, type: addType.value, time: addTime.value })
+  sortDraft()
+  addType.value = oppositeOfLast()
 }
 
 async function save() {
-  const err = validate()
-  if (err) { error.value = err; return }
-  if (!store.worktime) return
-  await store.replaceDayEvents(store.worktime.date, toEvents())
+  sortDraft()
+  await store.replaceDayEvents(date, toEvents())
   emit('close')
 }
 </script>
@@ -59,9 +106,11 @@ async function save() {
     style="background-color: rgba(0,0,0,0.8)"
     @click.self="emit('close')"
   >
-    <div class="bg-surface border border-border-2 w-full max-w-md mx-4">
-      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
-        <span class="font-mono text-xs tracking-widest text-text-dim uppercase">Edit times</span>
+    <div class="bg-surface border border-border-2 w-full max-w-md mx-4 max-h-[85dvh] flex flex-col">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+        <span class="font-mono text-xs tracking-widest text-text-dim uppercase">
+          Edit times<span v-if="!isToday" class="text-text-faint"> · {{ date }}</span>
+        </span>
         <button
           type="button"
           class="font-mono text-text-faint hover:text-text text-lg leading-none transition-colors"
@@ -70,38 +119,90 @@ async function save() {
         >×</button>
       </div>
 
-      <div class="px-6 py-5 flex flex-col gap-3">
-        <div
-          v-for="row in rows"
-          :key="row.index"
-          class="flex items-center justify-between"
-        >
-          <span class="font-mono text-sm text-text-dim">{{ row.label }}</span>
-          <input
-            type="time"
-            :value="row.value"
-            @input="onTimeInput(row.index, ($event.target as HTMLInputElement).value)"
-            class="font-mono text-sm w-24 bg-surface border border-border-2 text-text px-2 py-1 text-right focus:outline-none focus:border-work"
-          />
+      <div class="overflow-y-auto px-6 py-5 flex flex-col gap-3">
+        <div v-if="draft.length === 0" class="font-mono text-xs text-text-faint text-center py-2">
+          No events for this day.
         </div>
 
-        <div v-if="error" class="font-mono text-xs text-overtime mt-2">
-          {{ error }}
+        <div
+          v-for="(row, i) in draft"
+          :key="row.id"
+          data-testid="event-row"
+          class="flex flex-col gap-1 pl-2 border-l-2"
+          :class="issuesByIndex.has(i) ? 'border-l-overtime' : 'border-l-transparent'"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <span class="font-mono text-sm text-text-dim">{{ row.type === 'in' ? 'Clocked in' : 'Clocked out' }}</span>
+            <div class="flex items-center gap-2">
+              <input
+                type="time"
+                :value="row.time"
+                :aria-label="`${row.type === 'in' ? 'Clocked in' : 'Clocked out'} time`"
+                @input="onTimeInput(row, ($event.target as HTMLInputElement).value)"
+                @change="sortDraft"
+                class="font-mono text-sm w-24 bg-surface border border-border-2 text-text px-2 py-1 text-right focus:outline-none focus:border-work"
+              />
+              <button
+                type="button"
+                class="font-mono text-text-faint hover:text-overtime text-lg leading-none w-6 transition-colors"
+                aria-label="Delete event"
+                title="Delete event"
+                @click="remove(row)"
+              >×</button>
+            </div>
+          </div>
+          <span
+            v-for="msg in issuesByIndex.get(i) ?? []"
+            :key="msg"
+            class="font-mono text-[11px] text-overtime"
+          >{{ msg }}</span>
+        </div>
+
+        <div class="flex items-center justify-between gap-3 pt-3 mt-1 border-t border-border">
+          <div class="flex" role="group" aria-label="New event type">
+            <button
+              v-for="t in (['in', 'out'] as const)"
+              :key="t"
+              type="button"
+              class="font-mono text-[10px] tracking-widest uppercase px-2 py-1 border transition-colors"
+              :class="addType === t ? 'border-work text-work' : 'border-border-2 text-text-faint hover:text-text'"
+              :aria-pressed="addType === t"
+              @click="addType = t"
+            >{{ t }}</button>
+          </div>
+          <div class="flex items-center gap-2">
+            <input
+              type="time"
+              :value="addTime"
+              aria-label="New event time"
+              @input="onAddTimeInput(($event.target as HTMLInputElement).value)"
+              class="font-mono text-sm w-24 bg-surface border border-border-2 text-text px-2 py-1 text-right focus:outline-none focus:border-work"
+            />
+            <button
+              type="button"
+              class="font-mono text-[10px] tracking-widest uppercase px-2 py-1 border border-border-2 text-text-dim hover:text-text hover:border-text-faint transition-colors"
+              @click="add"
+            >Add</button>
+          </div>
         </div>
       </div>
 
-      <div class="flex justify-end gap-3 px-6 py-4 border-t border-border">
-        <button
-          type="button"
-          class="font-mono text-xs tracking-widest uppercase px-5 py-2 border border-border-2 text-text-faint hover:text-text hover:border-text-faint transition-colors"
-          @click="emit('close')"
-        >Cancel</button>
-        <button
-          type="button"
-          class="font-mono text-xs tracking-widest uppercase px-5 py-2 bg-work text-bg font-bold hover:bg-work-hi transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          :disabled="error !== null"
-          @click="save"
-        >Save</button>
+      <div class="px-6 py-4 border-t border-border shrink-0 flex flex-col gap-3">
+        <div v-if="isFaulty" class="font-mono text-xs text-overtime" role="status">
+          Day will be saved as faulty. Fix the highlighted events to get totals back.
+        </div>
+        <div class="flex justify-end gap-3">
+          <button
+            type="button"
+            class="font-mono text-xs tracking-widest uppercase px-5 py-2 border border-border-2 text-text-faint hover:text-text hover:border-text-faint transition-colors"
+            @click="emit('close')"
+          >Cancel</button>
+          <button
+            type="button"
+            class="font-mono text-xs tracking-widest uppercase px-5 py-2 bg-work text-bg font-bold hover:bg-work-hi transition-colors"
+            @click="save"
+          >Save</button>
+        </div>
       </div>
     </div>
   </div>
