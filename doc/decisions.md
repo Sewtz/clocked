@@ -236,3 +236,9 @@ All questions in `discussion.md` have been answered. New decisions will be appen
 - **Context:** developers need to inspect and clear the history store from the console.
 - **Decision:** add `window.__clocked.getHistory()` (returns all archived `Worktime` records) and `window.__clocked.clearHistory()` (wipes the store). `simulateMidnight()` now exercises the archive path automatically because `checkRollover` → `reset()` archives.
 - **Consequences:** the existing `simulateMidnight` test path now writes to history; tests that asserted "no side effects" after `clear()` need updating. Help text lists the new methods.
+
+## ADR-035 — Gap-fitted breaks do not reduce worked time (amends ADR-028)
+
+- **Context:** ADR-028 fits a mandatory break into the start of a long-enough gap. `recompute()` also subtracted that break from `workedGross`, but gap time is never part of `workedGross`, so the break was deducted twice. For example, 08:00–14:00 + 14:40–16:00 (40 min lunch) showed 6h 50m worked instead of 7h 20m. The docs contradicted each other: ADR-028 says gaps are neutral, while the formula in `architecture.md` subtracted all of `breakSeconds`. See #15.
+- **Decision:** `workedSeconds = workedGross − injected mandatory pauses` (those inserted at a trigger during a work punch, live or elapsed). Breaks fitted into a gap count toward `breakSeconds` and are still shown as `mandatory-break` segments, but they are not subtracted from worked time.
+- **Consequences:** days with a qualifying gap show more worked time than before (by the fitted break durations). Live-break behaviour (ADR-024) is unchanged. Historic days are recomputed at view time, so they display the corrected totals with no migration.
