@@ -1,21 +1,25 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { recompute } from '@/domain/recompute'
-import { analyse } from '@/domain/events'
+import { analyse, ISSUE_TEXT } from '@/domain/events'
 import { formatHHMM, secToTimeInput } from '@/domain/format'
 import type { Worktime, Settings } from '@/domain/types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   worktime: Worktime | null
   settings: Settings | null
   nowSec: number
-}>()
+  /** Today may end with an open clock-in; a past day may not. */
+  isToday?: boolean
+}>(), { isToday: false })
+
+const analysis = computed(() =>
+  props.worktime ? analyse(props.worktime.events, { allowOpen: props.isToday }) : null,
+)
 
 const recomputed = computed(() => {
-  if (!props.worktime || !props.settings) return null
-  // Faulty days get no totals; the dedicated faulty view arrives with #12.
-  const a = analyse(props.worktime.events, { allowOpen: true })
-  if (a.status === 'faulty') return null
+  const a = analysis.value
+  if (!a || a.status === 'faulty' || !props.settings) return null
   return recompute(a.punches, props.settings, props.nowSec)
 })
 
@@ -29,6 +33,17 @@ const rows = computed(() => {
   }))
 })
 
+/** Raw events with issue hints, shown when the day is faulty. */
+const faultyRows = computed(() => {
+  const a = analysis.value
+  if (!props.worktime || a?.status !== 'faulty') return []
+  return props.worktime.events.map((e, i) => ({
+    label: e.type === 'in' ? 'In' : 'Out',
+    time: secToTimeInput(e.t),
+    problems: a.issues.filter(x => x.index === i).map(x => ISSUE_TEXT[x.kind]),
+  }))
+})
+
 const totalMs = computed(() => (recomputed.value?.workedSeconds ?? 0) * 1000)
 const breakMs = computed(() => (recomputed.value?.breakSeconds ?? 0) * 1000)
 </script>
@@ -37,6 +52,25 @@ const breakMs = computed(() => (recomputed.value?.breakSeconds ?? 0) * 1000)
   <div v-if="!worktime || worktime.events.length === 0" class="font-mono text-xs text-text-faint py-4 text-center">
     No events for this day.
   </div>
+
+  <div v-else-if="analysis?.status === 'faulty'" class="flex flex-col gap-2" data-testid="faulty-day-list">
+    <div
+      v-for="(row, i) in faultyRows"
+      :key="i"
+      class="flex flex-col border border-border px-3 py-2 border-l-2"
+      :class="row.problems.length ? 'border-l-overtime' : 'border-l-border'"
+    >
+      <div class="flex items-center justify-between">
+        <span class="font-mono text-[10px] tracking-widest uppercase text-text-faint w-12">{{ row.label }}</span>
+        <span class="font-mono text-sm text-text-dim">{{ row.time }}</span>
+      </div>
+      <span v-for="msg in row.problems" :key="msg" class="font-mono text-[11px] text-overtime">{{ msg }}</span>
+    </div>
+    <div class="font-mono text-xs text-overtime mt-2 pt-2 border-t border-border">
+      Times are inconsistent — totals unavailable until fixed.
+    </div>
+  </div>
+
   <div v-else class="flex flex-col gap-2">
     <div
       v-for="(row, i) in rows"

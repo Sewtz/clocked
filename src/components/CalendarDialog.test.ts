@@ -4,11 +4,15 @@ import { setActivePinia, createPinia, type Pinia } from 'pinia'
 import { useClockStore } from '@/stores/clock'
 import { DEFAULT_SETTINGS } from '@/domain/types'
 import CalendarDialog from './CalendarDialog.vue'
+import EditTimesDialog from './EditTimesDialog.vue'
+import { setClock } from '@/domain/clock'
+import { getHistoryDay, clearHistory } from '@/storage/history'
 import { punchesToEvents } from '@/domain/events'
 
 let pinia: Pinia
 
-beforeEach(() => {
+beforeEach(async () => {
+  await clearHistory()
   pinia = createPinia()
   setActivePinia(pinia)
   document.body.style.removeProperty('overflow')
@@ -35,7 +39,8 @@ describe('CalendarDialog', () => {
   it('renders the calendar grid', () => {
     const wrapper = mountDialog(new Date(2026, 7, 19, 12, 0))
     expect(wrapper.text()).toContain('Calendar')
-    expect(wrapper.findAll('button')).toHaveLength(29)
+    // 28 day cells + close + "Edit day"
+    expect(wrapper.findAll('button')).toHaveLength(30)
   })
 
   it('shows the selected day event list from history', async () => {
@@ -92,5 +97,50 @@ describe('CalendarDialog', () => {
     expect(document.body.style.overflow).toBe('hidden')
     wrapper.unmount()
     expect(document.body.style.overflow).toBe('')
+  })
+
+  function editButton(wrapper: ReturnType<typeof mount>) {
+    return wrapper.findAll('button').find(b => b.text() === 'Edit day')!
+  }
+
+  it('disables "Edit day" for a future date', async () => {
+    const wrapper = mountDialog(new Date(2026, 7, 19, 12, 0))
+    await wrapper.find('button[aria-label="2026-08-20"]').trigger('click')
+    expect(editButton(wrapper).attributes('disabled')).toBeDefined()
+    await wrapper.find('button[aria-label="2026-08-18"]').trigger('click')
+    expect(editButton(wrapper).attributes('disabled')).toBeUndefined()
+  })
+
+  it('opens the editor for the selected past day', async () => {
+    const now = new Date(2026, 7, 19, 12, 0)
+    setClock(() => now.getTime())
+    const wrapper = mountDialog(now)
+    await wrapper.find('button[aria-label="2026-08-18"]').trigger('click')
+    await editButton(wrapper).trigger('click')
+    expect(wrapper.findComponent(EditTimesDialog).props('date')).toBe('2026-08-18')
+  })
+
+  it('fixing a faulty past day updates the grid after the editor closes', async () => {
+    const now = new Date(2026, 7, 19, 12, 0)
+    setClock(() => now.getTime())
+    const store = useClockStore()
+    await store.replaceDayEvents('2026-08-18', [{ type: 'in', t: 28800 }, { type: 'in', t: 36000 }])
+    const wrapper = mountDialog(now)
+    await vi.waitFor(() => expect(wrapper.find('button[aria-label="2026-08-18, faulty"]').exists()).toBe(true))
+
+    await wrapper.find('button[aria-label="2026-08-18, faulty"]').trigger('click')
+    expect(wrapper.text()).toContain('Two clock-ins in a row')
+    await editButton(wrapper).trigger('click')
+    const editor = wrapper.findComponent(EditTimesDialog)
+    // Delete the second clock-in, add a clock-out at 17:00, save.
+    await editor.findAll('button[aria-label="Delete event"]')[1].trigger('click')
+    await editor.find('input[aria-label="New event time"]').setValue('17:00')
+    await editor.findAll('button').find(b => b.text() === 'Add')!.trigger('click')
+    await editor.findAll('button').find(b => b.text() === 'Save')!.trigger('click')
+
+    await vi.waitFor(() => expect(wrapper.findComponent(EditTimesDialog).exists()).toBe(false))
+    await vi.waitFor(() => expect(wrapper.find('button[aria-label="2026-08-18"] [data-status="valid"]').exists()).toBe(true))
+    expect((await getHistoryDay('2026-08-18'))!.events).toEqual([{ type: 'in', t: 28800 }, { type: 'out', t: 61200 }])
+    expect(wrapper.text()).toContain('Total worked')
   })
 })

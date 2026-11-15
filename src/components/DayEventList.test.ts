@@ -39,6 +39,7 @@ describe('DayEventList', () => {
         worktime: { date: '2026-08-17', events: punchesToEvents([{ in: 28800 }]) },
         settings: DEFAULT_SETTINGS,
         nowSec: 36000,
+        isToday: true,
       },
     })
     const text = wrapper.text()
@@ -52,6 +53,7 @@ describe('DayEventList', () => {
         worktime: { date: '2026-08-17', events: punchesToEvents([{ in: 0 }]) },
         settings: DEFAULT_SETTINGS,
         nowSec: 25200,
+        isToday: true,
       },
     })
     const text = wrapper.text()
@@ -71,5 +73,36 @@ describe('DayEventList', () => {
     const text = wrapper.text()
     expect(text).toContain('Gap')
     expect(text).toContain('Work')
+  })
+
+  it('flags a trailing clock-in on a past day as faulty', () => {
+    const wrapper = mount(DayEventList, {
+      props: {
+        worktime: { date: '2026-08-17', events: punchesToEvents([{ in: 28800 }]) },
+        settings: DEFAULT_SETTINGS,
+        nowSec: 86399,
+      },
+    })
+    expect(wrapper.find('[data-testid="faulty-day-list"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Past day ends clocked in')
+  })
+
+  it('shows raw events with issue hints and no totals for a faulty day', () => {
+    const wrapper = mount(DayEventList, {
+      props: {
+        worktime: {
+          date: '2026-08-17',
+          events: [{ type: 'in', t: 28800 }, { type: 'in', t: 36000 }, { type: 'out', t: 39600 }],
+        },
+        settings: DEFAULT_SETTINGS,
+        nowSec: 86399,
+      },
+    })
+    const text = wrapper.text()
+    expect(text).toContain('08:00')
+    expect(text).toContain('10:00')
+    expect(text).toContain('Two clock-ins in a row')
+    expect(text).toContain('totals unavailable')
+    expect(text).not.toContain('Total worked')
   })
 })

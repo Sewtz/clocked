@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { lastFourWeeksRange, addDays, ymd } from '@/domain/date'
+import { analyse } from '@/domain/events'
 import type { Worktime } from '@/domain/types'
 
 const props = defineProps<{
@@ -20,18 +21,24 @@ const cells = computed(() => {
   const out: Array<{
     date: Date
     ymd: string
-    hasData: boolean
+    status: 'none' | 'valid' | 'faulty'
     isToday: boolean
     isSelected: boolean
   }> = []
+  const todayKey = ymd(props.today)
   for (let i = 0; i < 28; i++) {
     const d = addDays(range.start, i)
     const key = ymd(d)
+    const events = props.history[key]?.events ?? []
+    const isToday = key === todayKey
+    const status = events.length === 0
+      ? 'none'
+      : analyse(events, { allowOpen: isToday }).status
     out.push({
       date: d,
       ymd: key,
-      hasData: !!props.history[key]?.events?.length,
-      isToday: key === ymd(props.today),
+      status,
+      isToday,
       isSelected: key === props.selectedDate,
     })
   }
@@ -56,15 +63,16 @@ const cells = computed(() => {
         cell.isToday ? 'border-text-dim' : 'border-border',
         cell.isSelected ? 'bg-surface-2' : 'bg-surface',
       ]"
-      :aria-label="cell.ymd"
+      :aria-label="cell.status === 'faulty' ? `${cell.ymd}, faulty` : cell.ymd"
       :aria-pressed="cell.isSelected"
       @click="emit('select', cell.ymd)"
     >
       <span class="font-mono text-xs text-text-dim">{{ cell.date.getDate() }}</span>
       <span
-        v-if="cell.hasData"
+        v-if="cell.status !== 'none'"
         class="w-1.5 h-1.5 rounded-full mt-1"
-        style="background-color: var(--color-work)"
+        :data-status="cell.status"
+        :style="{ backgroundColor: cell.status === 'faulty' ? 'var(--color-overtime)' : 'var(--color-work)' }"
         aria-hidden="true"
       />
     </button>
