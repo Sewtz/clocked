@@ -25,7 +25,9 @@ test.describe('history and the calendar', () => {
     // 8h30 with break1 injected after 6h of work
     await expect(page.getByText('08:00 – 14:00')).toBeVisible()
     await expect(page.getByText('14:30 – 16:30')).toBeVisible()
-    await expect(page.getByText('Total worked').locator('..')).toContainText('08:00')
+    await expect(page.getByTestId('day-worked')).toHaveText('08:00')
+    await expect(page.getByTestId('day-breaks')).toHaveText('00:30')
+    await expect(page.getByTestId('day-balance-label')).toHaveText('On target')
   })
 
   test('forgetting to clock out: the day is closed at 23:59', async ({ page }) => {
@@ -68,7 +70,7 @@ test.describe('history and the calendar', () => {
     await page.getByRole('button', { name: 'Save' }).click()
 
     await expect(cell(page, '2026-11-16')).toBeVisible()
-    await expect(page.getByText('Total worked')).toBeVisible()
+    await expect(page.getByTestId('day-worked')).toHaveText('08:00')
     const day = await page.evaluate(() => window.__clocked.getHistory())
     expect(day[0].events.map(e => e.type)).toEqual(['in', 'out', 'in', 'out'])
   })
@@ -90,7 +92,9 @@ test.describe('history and the calendar', () => {
     // 7h with no gap: break1 is injected after 6h of work and splits the block.
     await expect(page.getByText('08:00 – 14:00')).toBeVisible()
     await expect(page.getByText('14:30 – 15:00')).toBeVisible()
-    await expect(page.getByText('Total worked').locator('..')).toContainText('06:30')
+    await expect(page.getByTestId('day-worked')).toHaveText('06:30')
+    await expect(page.getByTestId('day-balance')).toHaveText('−01:30')
+    await expect(page.getByTestId('day-balance-label')).toHaveText('Undertime')
     // Today is untouched
     await page.getByRole('button', { name: 'Close' }).click()
     await expect(page.getByText('Press clock in to start tracking')).toBeVisible()

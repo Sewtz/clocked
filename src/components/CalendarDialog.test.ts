@@ -141,6 +141,7 @@ describe('CalendarDialog', () => {
     await vi.waitFor(() => expect(wrapper.findComponent(EditTimesDialog).exists()).toBe(false))
     await vi.waitFor(() => expect(wrapper.find('button[aria-label="2026-08-18"] [data-status="valid"]').exists()).toBe(true))
     expect((await getHistoryDay('2026-08-18'))!.events).toEqual([{ type: 'in', t: 28800 }, { type: 'out', t: 61200 }])
-    expect(wrapper.text()).toContain('Total worked')
+    // 08:00-17:00 without a gap: break1 injected after 6h -> 8h30 worked
+    expect(wrapper.find('[data-testid="day-worked"]').text()).toBe('08:30')
   })
 })

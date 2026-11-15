@@ -60,5 +60,6 @@ test('existing v3 data is migrated to events on first launch', async ({ page }) 
   await page.getByRole('button', { name: '2026-11-13', exact: true }).click()
   // 8h with break1 injected after 6h of work
   await expect(page.getByText('08:00 – 14:00')).toBeVisible()
-  await expect(page.getByText('Total worked').locator('..')).toContainText('07:30')
+  await expect(page.getByTestId('day-worked')).toHaveText('07:30')
+  await expect(page.getByTestId('day-balance')).toHaveText('−00:30')
 })
